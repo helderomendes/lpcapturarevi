@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-white antialiased;
+    /* Canvas escuro com um brilho azul discreto atras dos cards. */
+    background-image:
+      radial-gradient(90rem 50rem at 50% -20%, rgba(20, 102, 255, 0.18), transparent 60%),
+      radial-gradient(60rem 40rem at 100% 100%, rgba(20, 102, 255, 0.08), transparent 60%);
+    background-attachment: fixed;
+    /* Zero scroll horizontal, sempre. */
+    overflow-x: hidden;
+  }
+
+  /* Alvos de toque nunca abaixo de 48px: o operador esta de pe, com pressa. */
+  button,
+  a[role='button'],
+  input,
+  select,
+  textarea {
+    @apply min-h-touch;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* evita o zoom automatico do iOS ao focar o campo */
+  }
+
+  ::placeholder {
+    @apply text-white/35;
+  }
+
+  /* O visitante nao precisa ver a selecao azul do sistema arrastando texto. */
+  ::selection {
+    @apply bg-revi-500/40;
+  }
+}
+
+@layer components {
+  /* Glassmorphism sutil: fundo translucido, borda de 1px em branco a ~10%. */
+  .glass {
+    @apply rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md;
+  }
+
+  .glass-forte {
+    @apply rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur-xl;
+  }
+
+  .campo {
+    @apply w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3
+           text-base text-white outline-none transition
+           focus:border-revi-400 focus:bg-white/[0.07] focus:ring-2 focus:ring-revi-500/40;
+  }
+
+  .campo-erro {
+    @apply border-red-400/70 focus:border-red-400 focus:ring-red-500/30;
+  }
+
+  .rotulo {
+    @apply mb-1.5 block text-sm font-medium text-white/70;
+  }
+}
+
+/* Respeita quem prefere menos movimento. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+dev-dist
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+.vercel
+.vscode/*
+!.vscode/extensions.json
+*.log
+supabase/.temp
