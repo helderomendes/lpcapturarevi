@@ -12,3 +12,4 @@ dev-dist
 !.vscode/extensions.json
 *.log
 supabase/.temp
+tsconfig.tsbuildinfo

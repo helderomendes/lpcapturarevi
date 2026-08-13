@@ -1,5 +1,4 @@
 export type Papel = 'bdr' | 'closer' | 'admin'
-export type Temperatura = 'quente' | 'morno' | 'frio'
 export type StatusSync = 'pendente' | 'enviado' | 'erro' | 'duplicado'
 export type ResolucaoDuplicado = 'anexar_nota' | 'criar_assim_mesmo'
 
@@ -43,13 +42,19 @@ export interface Lead {
 
   plataforma_ecommerce: string | null
   plataforma_outra: string | null
-  temperatura: Temperatura | null
   observacoes: string | null
 
   consentimento_lgpd: boolean
   consentimento_em: string | null
 
   agendou_reuniao: boolean
+  /**
+   * Controle local: o link de agendamento foi aberto para este lead, mas o BDR
+   * ainda nao confirmou se a reuniao saiu. Como `agendou_reuniao` segmenta as
+   * trilhas pos-evento, ele so vira true com confirmacao humana — nunca por
+   * suposicao de que abrir o link significa ter agendado.
+   */
+  agendamento_aberto: boolean
 
   status_sync: StatusSync
   erro_sync: string | null
@@ -65,8 +70,8 @@ export interface Lead {
   proximo_retry_em: number | null
 
   /**
-   * Lead capturado no modo cliente, esperando o BDR complementar (temperatura,
-   * plataforma, observacoes). Segura o envio para que a nota do negocio nasca
+   * Lead capturado no modo cliente, esperando o BDR complementar (plataforma
+   * de e-commerce, observacoes). Segura o envio para que a nota do negocio nasca
    * completa — com liberacao automatica por tempo, para nao existir cenario em
    * que um lead fica parado para sempre.
    */

@@ -1,39 +1,25 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Header } from '@/components/Header'
 import { Botao, Card } from '@/components/ui'
-import { LINK_AGENDAMENTO_PADRAO } from '@/config/app'
 import { useApp } from '@/contexts/AppContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { baseDoAgendamento, montarLinkAgendamento } from '@/lib/agendamento'
 import { atualizarLead, obterLead } from '@/lib/db'
 import { sincronizar } from '@/lib/sync'
 import type { Lead } from '@/types'
 
-/**
- * Monta o link de roteamento round-robin do HubSpot com os dados ja
- * preenchidos. O visitante so escolhe o horario.
- *
- * A roleta de closers e configurada no HubSpot — a aplicacao nunca decide quem
- * atende, nem consulta disponibilidade pela API.
- */
-function montarLinkAgendamento(lead: Lead, base: string): string {
-  const partes = lead.nome.trim().split(/\s+/)
-  const url = new URL(base)
-  url.searchParams.set('firstname', partes[0] ?? '')
-  url.searchParams.set('lastname', partes.slice(1).join(' '))
-  url.searchParams.set('email', lead.email)
-  url.searchParams.set('company', lead.empresa)
-  url.searchParams.set('phone', lead.telefone)
-  return url.toString()
-}
-
 export function PosSalvamento() {
   const { id } = useParams<{ id: string }>()
+  const [params] = useSearchParams()
   const navegar = useNavigate()
   const { usuario } = useAuth()
   const { evento, atualizar } = useApp()
   const [lead, setLead] = useState<Lead | null>(null)
-  const [abriuAgendamento, setAbriuAgendamento] = useState(false)
+  // Chegou aqui vindo do botao "Agendar reunião": a aba do HubSpot ja abriu.
+  const [aguardandoConfirmacao, setAguardandoConfirmacao] = useState(
+    params.get('agendando') === '1',
+  )
 
   useEffect(() => {
     if (!id) return
@@ -45,23 +31,16 @@ export function PosSalvamento() {
 
   if (!lead) return null
 
-  const base = (evento?.link_agendamento ?? LINK_AGENDAMENTO_PADRAO).trim()
-  let link: string | null = null
-  if (base) {
-    try {
-      link = montarLinkAgendamento(lead, base)
-    } catch {
-      link = null
-    }
-  }
+  const link = montarLinkAgendamento(lead, baseDoAgendamento(evento), evento)
 
-  const marcarAgendado = async () => {
-    await atualizarLead(lead.id, { agendou_reuniao: true })
-    setLead({ ...lead, agendou_reuniao: true })
+  const definirAgendamento = async (agendou: boolean) => {
+    await atualizarLead(lead.id, {
+      agendou_reuniao: agendou,
+      agendamento_aberto: agendou ? false : lead.agendamento_aberto,
+    })
+    setLead({ ...lead, agendou_reuniao: agendou })
+    setAguardandoConfirmacao(false)
     await atualizar()
-    // Se o lead ja subiu, a flag local nao volta ao HubSpot — o agendamento em
-    // si ja registra a reuniao la. A flag serve para segmentar as trilhas
-    // pos-evento a partir do Supabase.
     if (usuario) void sincronizar(usuario.id).then(atualizar)
   }
 
@@ -95,35 +74,36 @@ export function PosSalvamento() {
           </Card>
         )}
 
+        {/* `agendou_reuniao` segmenta as trilhas pos-evento, entao so vira true
+            com confirmacao humana — abrir o link nao basta. */}
+        {aguardandoConfirmacao && !lead.agendou_reuniao && (
+          <Card className="space-y-3">
+            <p className="text-sm text-white/70">
+              O agendamento abriu em outra aba. O visitante escolheu um horário?
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Botao variante="secundario" onClick={() => setAguardandoConfirmacao(false)}>
+                Ainda não
+              </Botao>
+              <Botao onClick={() => void definirAgendamento(true)}>Sim, agendou</Botao>
+            </div>
+          </Card>
+        )}
+
         <div className="space-y-3">
           {link ? (
-            <>
+            !lead.agendou_reuniao && (
               <Botao
                 larguraTotal
                 className="!min-h-[64px] !text-lg"
                 onClick={() => {
-                  window.open(link!, '_blank', 'noopener,noreferrer')
-                  setAbriuAgendamento(true)
+                  window.open(link, '_blank', 'noopener,noreferrer')
+                  setAguardandoConfirmacao(true)
                 }}
               >
-                Agendar reunião agora
+                {lead.agendamento_aberto ? 'Reabrir agendamento' : 'Agendar reunião agora'}
               </Botao>
-
-              {/* Caminho de volta explicito: a aba do HubSpot fica aberta ao lado. */}
-              {abriuAgendamento && !lead.agendou_reuniao && (
-                <Card className="space-y-3">
-                  <p className="text-sm text-white/70">
-                    O visitante concluiu o agendamento na outra aba?
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Botao variante="secundario" onClick={() => setAbriuAgendamento(false)}>
-                      Ainda não
-                    </Botao>
-                    <Botao onClick={() => void marcarAgendado()}>Sim, agendou</Botao>
-                  </div>
-                </Card>
-              )}
-            </>
+            )
           ) : (
             <Card className="border-amber-400/30 bg-amber-400/[0.07]">
               <p className="text-sm text-amber-100">

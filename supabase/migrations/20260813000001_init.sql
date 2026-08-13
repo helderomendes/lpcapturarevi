@@ -13,10 +13,6 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create type temperatura_lead as enum ('quente', 'morno', 'frio');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
   create type status_sync_lead as enum ('pendente', 'enviado', 'erro', 'duplicado');
 exception when duplicate_object then null; end $$;
 
@@ -94,7 +90,6 @@ create table if not exists public.leads (
   -- Texto livre quando o BDR escolhe "Outra". Nao vai para o enum (o HubSpot
   -- rejeitaria), vai para a nota do negocio.
   plataforma_outra      text,
-  temperatura           temperatura_lead,
   observacoes           text,
 
   consentimento_lgpd    boolean not null default false,

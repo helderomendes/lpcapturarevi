@@ -5,7 +5,7 @@ import { StatusPill } from '@/components/StatusPill'
 import { Botao, Card } from '@/components/ui'
 import { useApp } from '@/contexts/AppContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { aguardandoComplemento, listarNaoResolvidos } from '@/lib/db'
+import { aguardandoComplemento, atualizarLead, listarNaoResolvidos } from '@/lib/db'
 import { reenviar, resolverDuplicado } from '@/lib/sync'
 import { formatarDataHora } from '@/lib/validacao'
 import type { Lead, ResolucaoDuplicado } from '@/types'
@@ -80,12 +80,49 @@ export function Fila() {
                     <StatusPill status={lead.status_sync} />
                   </div>
 
+                  {/* Agendamento aberto e ainda sem confirmacao. Como
+                      `agendou_reuniao` segmenta as trilhas pos-evento, quem
+                      confirma e o BDR — abrir o link nunca marca sozinho. */}
+                  {lead.agendamento_aberto && !lead.agendou_reuniao && (
+                    <div className="rounded-xl border border-revi-400/30 bg-revi-500/[0.09] p-3">
+                      <p className="text-sm text-revi-100">
+                        O agendamento foi aberto para este lead. Saiu reunião?
+                      </p>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <Botao
+                          variante="fantasma"
+                          className="!min-h-[44px] !py-2 !text-sm"
+                          onClick={() =>
+                            void agir(lead.id, () =>
+                              atualizarLead(lead.id, { agendamento_aberto: false }),
+                            )
+                          }
+                        >
+                          Não agendou
+                        </Botao>
+                        <Botao
+                          variante="secundario"
+                          className="!min-h-[44px] !py-2 !text-sm"
+                          onClick={() =>
+                            void agir(lead.id, () =>
+                              atualizarLead(lead.id, {
+                                agendou_reuniao: true,
+                                agendamento_aberto: false,
+                              }),
+                            )
+                          }
+                        >
+                          Sim, agendou
+                        </Botao>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Aguardando complemento do BDR (veio do modo cliente). */}
                   {aguardandoComplemento(lead) && (
                     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                       <p className="text-sm text-white/60">
-                        Esperando você completar temperatura, plataforma e observações
-                        antes de subir.
+                        Esperando você completar plataforma e observações antes de subir.
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Link to={`/captura/${lead.id}`}>

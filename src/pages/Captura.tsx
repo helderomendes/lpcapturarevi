@@ -12,6 +12,7 @@ import {
 } from '@/config/app'
 import { useApp } from '@/contexts/AppContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { baseDoAgendamento, montarLinkAgendamento } from '@/lib/agendamento'
 import { obterLead, salvarLead } from '@/lib/db'
 import { sincronizar } from '@/lib/sync'
 import {
@@ -21,9 +22,10 @@ import {
   validarObrigatorios,
   type ErrosCampo,
 } from '@/lib/validacao'
-import type { Lead, Temperatura } from '@/types'
+import type { Lead } from '@/types'
 
 type Modo = 'bdr' | 'cliente'
+type Acao = 'salvar' | 'agendar'
 
 interface Formulario {
   nome: string
@@ -35,7 +37,6 @@ interface Formulario {
   instagram: string
   plataforma: string
   plataformaOutra: string
-  temperatura: Temperatura | ''
   observacoes: string
   consentimento: boolean
 }
@@ -50,16 +51,9 @@ const FORM_VAZIO: Formulario = {
   instagram: '',
   plataforma: '',
   plataformaOutra: '',
-  temperatura: '',
   observacoes: '',
   consentimento: false,
 }
-
-const TEMPERATURAS: { valor: Temperatura; rotulo: string; classe: string }[] = [
-  { valor: 'quente', rotulo: 'Quente', classe: 'border-red-400/50 bg-red-500/15 text-red-100' },
-  { valor: 'morno', rotulo: 'Morno', classe: 'border-amber-400/50 bg-amber-400/15 text-amber-100' },
-  { valor: 'frio', rotulo: 'Frio', classe: 'border-sky-400/50 bg-sky-400/15 text-sky-100' },
-]
 
 export function Captura() {
   const { id } = useParams<{ id: string }>()
@@ -103,7 +97,6 @@ export function Captura() {
         instagram: lead.instagram ?? '',
         plataforma: lead.plataforma_outra ? 'Outra' : (lead.plataforma_ecommerce ?? ''),
         plataformaOutra: lead.plataforma_outra ?? '',
-        temperatura: lead.temperatura ?? '',
         observacoes: lead.observacoes ?? '',
         consentimento: lead.consentimento_lgpd,
       })
@@ -115,9 +108,10 @@ export function Captura() {
   }, [id, navegar])
 
   const opcoesPlataforma = useMemo(() => [...PLATAFORMAS_ECOMMERCE, 'Outra'], [])
+  const temLinkAgendamento = Boolean(baseDoAgendamento(evento))
 
-  const salvar = async (e: FormEvent) => {
-    e.preventDefault()
+  const salvar = async (e: FormEvent | null, acao: Acao) => {
+    e?.preventDefault()
     if (!usuario || !evento) return
 
     const novosErros = validarObrigatorios(form)
@@ -132,6 +126,17 @@ export function Captura() {
         block: 'center',
       })
       return
+    }
+
+    // A aba do HubSpot precisa abrir AINDA dentro do gesto de toque, antes de
+    // qualquer await — senao o navegador trata como popup e bloqueia.
+    let abriuAgendamento = false
+    if (acao === 'agendar') {
+      const link = montarLinkAgendamento(form, baseDoAgendamento(evento), evento)
+      if (link) {
+        window.open(link, '_blank', 'noopener,noreferrer')
+        abriuAgendamento = true
+      }
     }
 
     setSalvando(true)
@@ -159,7 +164,6 @@ export function Captura() {
 
       plataforma_ecommerce: plataformaHubspot,
       plataforma_outra: ehOutra ? form.plataformaOutra.trim() || null : null,
-      temperatura: form.temperatura || null,
       observacoes: form.observacoes.trim() || null,
 
       consentimento_lgpd: form.consentimento,
@@ -168,6 +172,8 @@ export function Captura() {
         : null,
 
       agendou_reuniao: leadOriginal?.agendou_reuniao ?? false,
+      // Abrir o link nao significa ter agendado: quem confirma e o BDR.
+      agendamento_aberto: abriuAgendamento || (leadOriginal?.agendamento_aberto ?? false),
 
       // Lead ja enviado ao HubSpot nao volta para a fila: reenviar seria no-op
       // (o backend deduplica pelo UUID) e daria falsa sensacao de atualizacao.
@@ -203,7 +209,8 @@ export function Captura() {
       setObrigado(true)
       return
     }
-    navegar(`/salvo/${lead.id}`, { replace: true })
+    // Se o agendamento foi aberto, a tela seguinte ja pergunta se saiu reuniao.
+    navegar(`/salvo/${lead.id}${abriuAgendamento ? '?agendando=1' : ''}`, { replace: true })
   }
 
   if (carregandoLead) return null
@@ -251,7 +258,7 @@ export function Captura() {
           </Card>
         )}
 
-        <form onSubmit={salvar} className="space-y-4" noValidate>
+        <form onSubmit={(e) => void salvar(e, 'salvar')} className="space-y-4" noValidate>
           <Card className="space-y-4">
             <Campo
               id="nome"
@@ -352,33 +359,6 @@ export function Captura() {
                 />
               )}
 
-              <div>
-                <span className="rotulo">Temperatura</span>
-                <div className="grid grid-cols-3 gap-2">
-                  {TEMPERATURAS.map((opcao) => {
-                    const ativo = form.temperatura === opcao.valor
-                    return (
-                      <button
-                        key={opcao.valor}
-                        type="button"
-                        aria-pressed={ativo}
-                        onClick={() =>
-                          definir('temperatura', ativo ? '' : opcao.valor)
-                        }
-                        className={[
-                          'min-h-[56px] rounded-xl border text-base font-semibold transition',
-                          ativo
-                            ? opcao.classe
-                            : 'border-white/10 bg-white/[0.04] text-white/60 hover:bg-white/[0.08]',
-                        ].join(' ')}
-                      >
-                        {opcao.rotulo}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
               <CampoTexto
                 id="observacoes"
                 rotulo="Observações"
@@ -426,14 +406,31 @@ export function Captura() {
             </Card>
           )}
 
-          <Botao
-            type="submit"
-            larguraTotal
-            carregando={salvando}
-            className="!min-h-[64px] !text-lg"
-          >
-            {editando ? 'Salvar alterações' : modo === 'cliente' ? 'Enviar' : 'Salvar lead'}
-          </Botao>
+          {/* Duas saidas, lado a lado: salvar e seguir, ou salvar ja abrindo o
+              agendamento com os dados que a pessoa acabou de preencher. */}
+          <div className="space-y-3">
+            <Botao
+              type="submit"
+              larguraTotal
+              carregando={salvando}
+              className="!min-h-[64px] !text-lg"
+            >
+              {editando ? 'Salvar alterações' : 'Salvar lead'}
+            </Botao>
+
+            {temLinkAgendamento && (
+              <Botao
+                type="button"
+                variante="secundario"
+                larguraTotal
+                disabled={salvando}
+                className="!min-h-[64px] !text-lg"
+                onClick={() => void salvar(null, 'agendar')}
+              >
+                Agendar reunião
+              </Botao>
+            )}
+          </div>
         </form>
 
         {modo === 'cliente' && <SairDoModoCliente aoSair={() => setModo('bdr')} />}

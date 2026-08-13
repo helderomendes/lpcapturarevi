@@ -70,7 +70,6 @@ function corpoDoLead(lead: Lead) {
     instagram: lead.instagram,
     plataforma_ecommerce: lead.plataforma_ecommerce,
     plataforma_outra: lead.plataforma_outra,
-    temperatura: lead.temperatura,
     observacoes: lead.observacoes,
     consentimento_lgpd: lead.consentimento_lgpd,
     consentimento_em: lead.consentimento_em,

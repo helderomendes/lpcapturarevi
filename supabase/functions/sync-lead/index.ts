@@ -35,7 +35,6 @@ interface LeadEntrada {
   instagram?: string | null
   plataforma_ecommerce?: string | null
   plataforma_outra?: string | null
-  temperatura?: 'quente' | 'morno' | 'frio' | null
   observacoes?: string | null
   consentimento_lgpd?: boolean
   consentimento_em?: string | null
@@ -118,7 +117,6 @@ function montarNota(lead: LeadEntrada, evento: { nome: string }, autor: string):
     `Captado por: ${escapar(autor)}`,
   ]
 
-  if (lead.temperatura) linhas.push(`Temperatura: <b>${escapar(lead.temperatura)}</b>`)
   if (lead.plataforma_ecommerce) {
     const detalhe = lead.plataforma_outra?.trim()
     linhas.push(
@@ -283,7 +281,6 @@ Deno.serve(async (req) => {
       instagram: normalizarInstagram(lead.instagram),
       plataforma_ecommerce: lead.plataforma_ecommerce ?? null,
       plataforma_outra: lead.plataforma_outra ?? null,
-      temperatura: lead.temperatura ?? null,
       observacoes: lead.observacoes ?? null,
       consentimento_lgpd: lead.consentimento_lgpd ?? false,
       consentimento_em: lead.consentimento_em ?? null,

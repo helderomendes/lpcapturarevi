@@ -170,7 +170,7 @@ O `supabase/.env.local` (não versionado) carrega os segredos listados na seçã
 6. Cria o negócio no pipeline e etapa configurados, com `hubspot_owner_id` e
    `bdr_responsavel` = o BDR que captou, e canal + detalhamento de origem vindos do evento.
 7. Associa contato ↔ empresa ↔ negócio.
-8. Cria uma nota no negócio com observações, temperatura e plataforma de e-commerce.
+8. Cria uma nota no negócio com as observações do BDR e a plataforma de e-commerce.
 9. Devolve os três IDs; o app marca o lead como `enviado`.
 
 ### Idempotência
@@ -208,7 +208,7 @@ ambiente, e vivem em um único arquivo: `supabase/functions/_shared/config.ts`.
 | Variável | Valor atual | Onde conferir no HubSpot |
 | --- | --- | --- |
 | `HUBSPOT_PIPELINE_ID` | `139031732` (Vendas Diretas) | Configurações → Objetos → Negócios → Pipelines. O ID aparece na URL. |
-| `HUBSPOT_DEAL_STAGE_INICIAL_ID` | `238830450` (Prospect/Pesquisa) | Mesma tela, ao editar a etapa. |
+| `HUBSPOT_DEAL_STAGE_INICIAL_ID` | `238830451` (Contato) | Mesma tela, ao editar a etapa. O lead de evento já teve conversa presencial, então nasce um passo à frente de "Prospect/Pesquisa". |
 | `HUBSPOT_PROPERTY_CANAL` | `canal_de_lead` | Propriedades → Negócio → "Canal do Lead". |
 | `HUBSPOT_VALOR_CANAL` | `Eventos` | Opção já existente no enum. |
 | `HUBSPOT_PROPERTY_DETALHAMENTO_ORIGEM` | `detalhamento_de_origem` | Propriedades → Negócio. Texto livre; o valor vem do evento. |
@@ -229,13 +229,11 @@ supabase secrets set HUBSPOT_PROPERTY_ID_CAPTURA=id_captura_evento
 Sem ela o app funciona normalmente — a idempotência continua garantida pela tabela
 `leads`. A property é a segunda barreira, útil se alguém apagar o registro local.
 
-**`VITE_LINK_AGENDAMENTO_ROUND_ROBIN`** — HubSpot → Vendas → Reuniões → link de equipe
-com roteamento round-robin → Copiar link. A roleta de closers é configurada lá; o app
-nunca decide quem atende. Prefira cadastrar em `eventos.link_agendamento`.
-
-**`HUBSPOT_DEAL_STAGE_INICIAL_ID` — confirmar com a operação.** O default é
-`238830450` ("Prospect/Pesquisa"). Como o lead de evento já teve conversa presencial,
-`238830451` ("Contato") pode fazer mais sentido. Trocar é só variável de ambiente.
+Só isso. O link de agendamento já vem configurado:
+`https://meetings.hubspot.com/nicholas-love/revezamento-de-qualificacao-`
+— sobrescrevível por evento em `eventos.link_agendamento`, porque a escala de closers
+muda de feira para feira. A roleta é configurada no HubSpot; o app nunca decide quem
+atende.
 
 ### Scopes do Private App
 
@@ -321,15 +319,21 @@ app shell — é o que permite abrir offline em cold start.
   contador de capturados hoje, indicador de sincronização (sempre visível) e a lista dos
   últimos leads, tocáveis para editar ou reenviar.
 - **Captura** — dois modos:
-  - **Eu preencho (BDR)**: todos os campos, incluindo plataforma de e-commerce,
-    temperatura (três botões grandes) e observações.
+  - **Eu preencho (BDR)**: os 4 obrigatórios + cargo, site, Instagram, plataforma de
+    e-commerce e observações.
   - **Entregar o tablet (cliente)**: só os campos do visitante + consentimento LGPD
     obrigatório. Nenhum campo interno visível. Ao concluir, tela de "Obrigado" e volta
     automática a um formulário em branco em 5s. Sair do modo cliente exige **segurar** o
     botão, para o visitante não voltar ao app com um toque acidental.
-- **Pós-salvamento** — *Concluir* ou *Agendar reunião agora* (abre o link round-robin do
-  HubSpot em nova aba, com `firstname`, `lastname`, `email`, `company` e `phone` já
-  preenchidos). Ao voltar, o app pergunta se agendou e grava `agendou_reuniao`.
+  Os dois modos terminam com **dois botões**: *Salvar lead* e *Agendar reunião*. O
+  segundo salva e já abre o link round-robin do HubSpot em nova aba, com `firstname`,
+  `lastname`, `email`, `company` e `phone` preenchidos a partir do que a pessoa acabou
+  de digitar, mais `utm_source`/`utm_medium`/`utm_campaign` para a reunião ficar
+  rastreável até o evento. O visitante só escolhe o horário.
+- **Pós-salvamento** — confirma o lead e pergunta se saiu reunião, gravando
+  `agendou_reuniao`. Abrir o link nunca marca sozinho: como esse campo segmenta as
+  trilhas pós-evento, quem confirma é o BDR. Para leads do modo cliente, a pergunta
+  aparece na fila.
 - **Fila** — pendentes e erros, com *Sincronizar agora*, mensagem de erro legível por
   lead, botão de reenviar e o aviso de conflito de duplicata com as duas opções.
 
@@ -338,8 +342,8 @@ app shell — é o que permite abrir offline em cold start.
 ## 11. Decisões que valem conhecer
 
 **Lead do modo cliente espera o complemento do BDR.** Se um lead capturado pelo visitante
-subisse na hora, ele chegaria ao HubSpot antes de o BDR preencher temperatura, plataforma
-e observações — e a nota do negócio nasceria vazia. Então esses leads ficam retidos na
+subisse na hora, ele chegaria ao HubSpot antes de o BDR preencher plataforma e
+observações — e a nota do negócio nasceria vazia. Então esses leads ficam retidos na
 fila, sinalizados como "esperando você completar", e sobem quando o BDR salva o
 complemento (ou pelo botão *Enviar assim mesmo*). **Liberação automática em 2 horas**
 (`LIBERAR_AGUARDANDO_APOS_MS` em `src/config/app.ts`): lead incompleto no HubSpot é
@@ -385,9 +389,10 @@ Marque durante o teste de campo:
 - [ ] Contato + empresa + negócio criados e associados
 - [ ] Negócio nasce com o BDR correto como proprietário e como BDR responsável
 - [ ] Canal e detalhamento de origem corretos conforme o evento
-- [ ] Observações, temperatura e plataforma chegam como nota no negócio
+- [ ] Observações e plataforma de e-commerce chegam como nota no negócio
 - [ ] E-mail já existente retorna aviso de duplicata com o dono atual, sem sobrescrever
 - [ ] Link de agendamento abre com os dados pré-preenchidos
+- [ ] Negócio nasce na etapa "Contato" do pipeline Vendas Diretas
 - [ ] Indicador de sincronização reflete o estado real da fila
 - [ ] App abre offline em cold start
 - [ ] Trocar de evento não exige alteração de código

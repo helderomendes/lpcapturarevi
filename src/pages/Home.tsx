@@ -132,7 +132,7 @@ export function Home() {
                       <p className="truncate font-medium">{lead.nome}</p>
                       <p className="truncate text-sm text-white/45">
                         {lead.empresa} · {formatarHora(lead.criado_em)}
-                        {lead.temperatura && ` · ${lead.temperatura}`}
+                        {lead.agendou_reuniao && ' · reunião agendada'}
                       </p>
                     </div>
                     <StatusPill status={lead.status_sync} />

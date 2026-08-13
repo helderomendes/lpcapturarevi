@@ -4,15 +4,13 @@
 // =============================================================================
 
 /**
- * Link de agendamento round-robin do HubSpot usado como fallback.
- * O ideal e cadastrar o link em `eventos.link_agendamento`, porque cada feira
- * costuma ter uma escala de closers diferente.
- *
- * ⚠️ PREENCHER em .env: VITE_LINK_AGENDAMENTO_ROUND_ROBIN
- * HubSpot > Vendas > Reunioes > link de equipe (round-robin) > Copiar link.
+ * Link de agendamento round-robin do HubSpot (revezamento de qualificacao).
+ * Cada evento pode sobrescrever em `eventos.link_agendamento`, porque a escala
+ * de closers muda de feira para feira.
  */
 export const LINK_AGENDAMENTO_PADRAO = (
-  import.meta.env.VITE_LINK_AGENDAMENTO_ROUND_ROBIN ?? ''
+  import.meta.env.VITE_LINK_AGENDAMENTO_ROUND_ROBIN ??
+  'https://meetings.hubspot.com/nicholas-love/revezamento-de-qualificacao-'
 ).trim()
 
 /**
@@ -84,7 +82,7 @@ export const SEGUNDOS_TELA_OBRIGADO = 5
 
 /**
  * Um lead capturado no modo cliente espera o BDR complementar antes de subir,
- * para que a nota do negocio ja nasca com temperatura, plataforma e
+ * para que a nota do negocio ja nasca com plataforma de e-commerce e
  * observacoes. Passado esse tempo ele sobe assim mesmo: lead incompleto no
  * HubSpot e sempre melhor do que lead parado no aparelho.
  */

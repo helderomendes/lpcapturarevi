@@ -21,8 +21,11 @@ export const config = {
     /** Pipeline "Vendas Diretas". */
     pipelineId: env('HUBSPOT_PIPELINE_ID', '139031732'),
 
-    /** Etapa inicial. 238830450 = "Prospect/Pesquisa". */
-    dealStageInicialId: env('HUBSPOT_DEAL_STAGE_INICIAL_ID', '238830450'),
+    /**
+     * Etapa inicial. 238830451 = "Contato": o lead de evento ja teve conversa
+     * presencial, entao nasce um passo a frente de "Prospect/Pesquisa".
+     */
+    dealStageInicialId: env('HUBSPOT_DEAL_STAGE_INICIAL_ID', '238830451'),
 
     /** Canal do lead: enum no negocio. */
     propertyCanal: env('HUBSPOT_PROPERTY_CANAL', 'canal_de_lead'),
