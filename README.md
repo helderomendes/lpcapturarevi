@@ -273,6 +273,11 @@ origem) para o workflow ter do que disparar.
    - `VITE_LINK_AGENDAMENTO_ROUND_ROBIN`
 4. Deploy.
 
+**As variáveis precisam existir ANTES do build.** O Vite embute os valores no bundle
+durante o build; adicionar a variável na Vercel sem refazer o deploy não muda nada. Se
+faltar alguma, o app abre numa tela de *Configuração incompleta* dizendo exatamente
+quais — não em branco.
+
 **Nunca** adicione `HUBSPOT_TOKEN` na Vercel. Ele é secret do Supabase. Qualquer
 variável `VITE_*` vai para o bundle público.
 

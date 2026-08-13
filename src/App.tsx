@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AvisoSync } from '@/components/IndicadorSync'
+import { LimiteDeErro, TelaConfiguracao } from '@/components/TelaFalha'
 import { Spinner } from '@/components/ui'
+import { configuracaoValida } from '@/lib/supabase'
 import { AppProvider } from '@/contexts/AppContext'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Captura } from '@/pages/Captura'
@@ -79,12 +81,18 @@ function Rotas() {
 }
 
 export default function App() {
+  // Sem Supabase configurado nao ha login nem sincronizacao. Dizer isso na tela
+  // e melhor do que deixar o app abrir e falhar de formas confusas depois.
+  if (!configuracaoValida) return <TelaConfiguracao />
+
   return (
-    <AuthProvider>
-      <AppProvider>
-        <Rotas />
-        <AvisoSync />
-      </AppProvider>
-    </AuthProvider>
+    <LimiteDeErro>
+      <AuthProvider>
+        <AppProvider>
+          <Rotas />
+          <AvisoSync />
+        </AppProvider>
+      </AuthProvider>
+    </LimiteDeErro>
   )
 }
