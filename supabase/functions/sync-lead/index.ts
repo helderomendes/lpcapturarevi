@@ -13,9 +13,9 @@
 // =============================================================================
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
-import { config, validarConfig } from '../_shared/config.ts'
-import { corsHeaders, json } from '../_shared/cors.ts'
-import * as hs from '../_shared/hubspot.ts'
+import { config, validarConfig } from './lib/config.ts'
+import { corsHeaders, json } from './lib/cors.ts'
+import * as hs from './lib/hubspot.ts'
 
 // ---------------------------------------------------------------------------
 // Tipos

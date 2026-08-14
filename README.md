@@ -98,7 +98,7 @@ rede **e** acesso ao inbox, os dois indisponíveis num corredor de feira.
 3. No SQL Editor:
 
 ```sql
-select public.vincular_usuario(
+select private.vincular_usuario(
   'bdr@userevi.com',   -- e-mail, igual ao criado no passo 1
   'Nome do BDR',
   '85078031',          -- HubSpot owner ID
@@ -108,6 +108,12 @@ select public.vincular_usuario(
 
 Rodar de novo com o mesmo e-mail atualiza o registro — serve para corrigir um owner ID
 errado sem apagar nada.
+
+A função vive no schema `private`, não em `public`, de propósito: o `public` é exposto
+pelo PostgREST, e uma função `SECURITY DEFINER` ali seria chamável por `/rest/v1/rpc` —
+qualquer usuário logado poderia se promover a `admin` passando o próprio e-mail. O
+`private` não é exposto, então ela só roda pelo SQL Editor. O mesmo vale para
+`private.is_admin()`, usada dentro das policies.
 
 ---
 
@@ -203,7 +209,7 @@ e procure por `[sync-lead][<uuid>]`.
 
 Os valores abaixo **já vêm preenchidos** com o que existe hoje no portal da Revi
 (`22634045`), conferidos direto na API. Todos são sobrescrevíveis por variável de
-ambiente, e vivem em um único arquivo: `supabase/functions/_shared/config.ts`.
+ambiente, e vivem em um único arquivo: `supabase/functions/sync-lead/lib/config.ts`.
 
 | Variável | Valor atual | Onde conferir no HubSpot |
 | --- | --- | --- |
