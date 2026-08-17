@@ -11,7 +11,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'],
+      includeAssets: [
+        'icons/favicon.svg',
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+        'icons/icon-maskable-512.png',
+        'icons/apple-touch-icon.png',
+        'brand/logo-revi-dark.svg',
+      ],
       manifest: {
         name: 'Revi | Captura de Leads',
         short_name: 'Revi Captura',
@@ -24,10 +31,12 @@ export default defineConfig({
         theme_color: '#000011',
         lang: 'pt-BR',
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          // Arquivo proprio: o maskable precisa de margem, senao o Android
+          // recorta o simbolo ao aplicar a mascara circular.
           {
-            src: '/icons/icon-512.png',
+            src: '/icons/icon-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

@@ -54,7 +54,21 @@ Outros comandos:
 npm run build          # typecheck + build de produção
 npm run typecheck      # só o TypeScript
 npm run check:bundle   # confere que nenhum segredo vazou para dist/
-node scripts/gerar-icones.mjs   # regenera os ícones do PWA
+```
+
+### Marca
+
+O logo oficial vive em `public/brand/` (claro e escuro), vindo do design kit. O
+componente `src/components/Logo.tsx` traz os mesmos paths inline — sem requisição e sem
+risco de aparecer quebrado offline. O símbolo mantém as cores da marca (`#32c700`,
+`#0a40c6`, `#56bbee`); o wordmark herda `currentColor`, então fica branco sobre o canvas.
+`<Marca />` renderiza só o símbolo, para espaços onde o wordmark ficaria ilegível.
+
+Ícones do PWA e favicon são gerados do símbolo oficial e estão versionados. Só é
+necessário regerar se o logo mudar:
+
+```bash
+npm i -D playwright && node scripts/gerar-icones.mjs
 ```
 
 ---

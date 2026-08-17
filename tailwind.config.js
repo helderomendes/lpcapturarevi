@@ -18,8 +18,13 @@ export default {
           800: '#062b76',
           900: '#041a47',
         },
-        // Verde restrito ao logo.
-        logo: '#00E58A',
+        // Cores do logo oficial (design kit). Ficam restritas à marca: nenhuma
+        // delas é usada como cor de ação ou de estado na interface.
+        marca: {
+          verde: '#32c700',
+          azul: '#0a40c6',
+          ciano: '#56bbee',
+        },
       },
       fontFamily: {
         sans: [
