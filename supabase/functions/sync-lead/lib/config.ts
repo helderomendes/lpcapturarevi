@@ -51,6 +51,24 @@ export const config = {
     ),
 
     /**
+     * Espelho dos dados do lead no proprio negocio, para o closer nao precisar
+     * abrir o contato. Vazio = nao preenche.
+     *
+     * Os dois primeiros existem no portal e sao texto livre. Os quatro de baixo
+     * NAO existem ainda — precisam ser criados como texto de linha unica no
+     * negocio. Cuidado ao escolher o nome: existem properties parecidas que sao
+     * outra coisa (`whatsapp_atual` e um enum Sim/Nao sobre uso de WhatsApp,
+     * `seguidores_no_instagram` e faixa de seguidores, `cargo_do_lead` e um enum
+     * legado, `telefone_2` e numerico). Apontar para uma delas quebra o envio.
+     */
+    propertyNomeLead: env('HUBSPOT_PROPERTY_NOME_LEAD', 'nome_do_lead'),
+    propertyCargoLead: env('HUBSPOT_PROPERTY_CARGO_LEAD', 'lead_cargo'),
+    propertyTelefoneLead: env('HUBSPOT_PROPERTY_TELEFONE_LEAD', ''),
+    propertyEmailLead: env('HUBSPOT_PROPERTY_EMAIL_LEAD', ''),
+    propertyInstagramLead: env('HUBSPOT_PROPERTY_INSTAGRAM_LEAD', ''),
+    propertySiteLead: env('HUBSPOT_PROPERTY_SITE_LEAD', ''),
+
+    /**
      * ⚠️ PREENCHER — property de texto no negocio com o UUID de captura.
      * Ainda nao existe no portal. Enquanto estiver vazia, a idempotencia fica
      * garantida apenas pela tabela `leads` no Supabase (que ja e suficiente);

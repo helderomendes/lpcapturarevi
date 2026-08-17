@@ -115,7 +115,22 @@ function montarNota(lead: LeadEntrada, evento: { nome: string }, autor: string):
   const linhas: string[] = [
     `<b>Lead captado em evento — ${escapar(evento.nome)}</b>`,
     `Captado por: ${escapar(autor)}`,
+    '<br><b>Quem e</b>',
+    `Nome: ${escapar(lead.nome)}`,
   ]
+
+  // Telefone e e-mail tambem aqui, e nao so no contato: a nota e o unico lugar
+  // que o closer ve sem sair do negocio, e nao depende de property nenhuma
+  // estar configurada.
+  if (lead.cargo) linhas.push(`Cargo: ${escapar(lead.cargo)}`)
+  linhas.push(`Telefone / WhatsApp: ${escapar(lead.telefone)}`)
+  linhas.push(`E-mail: ${escapar(lead.email)}`)
+
+  const instagram = normalizarInstagram(lead.instagram)
+  if (instagram) linhas.push(`Instagram: ${escapar(instagram)}`)
+
+  const site = normalizarSite(lead.site)
+  if (site) linhas.push(`Site: ${escapar(site)}`)
 
   if (lead.plataforma_ecommerce) {
     const detalhe = lead.plataforma_outra?.trim()
@@ -124,14 +139,8 @@ function montarNota(lead: LeadEntrada, evento: { nome: string }, autor: string):
         (detalhe ? ` — ${escapar(detalhe)}` : ''),
     )
   }
-  if (lead.cargo) linhas.push(`Cargo: ${escapar(lead.cargo)}`)
 
-  const instagram = normalizarInstagram(lead.instagram)
-  if (instagram) linhas.push(`Instagram: ${escapar(instagram)}`)
-
-  const site = normalizarSite(lead.site)
-  if (site) linhas.push(`Site: ${escapar(site)}`)
-
+  linhas.push('<br><b>Registro</b>')
   linhas.push(`Agendou reuniao no estande: ${lead.agendou_reuniao ? 'sim' : 'nao'}`)
   linhas.push(
     `Consentimento LGPD: ${
@@ -438,7 +447,8 @@ Deno.serve(async (req) => {
 
     // --- 8. Negocio -------------------------------------------------------
     if (!dealId) {
-      const propsNegocio: Record<string, string> = {
+      // Nucleo: sem isto o negocio nao serve para nada.
+      const nucleo: Record<string, string> = {
         dealname: lead.empresa,
         pipeline: config.hubspot.pipelineId,
         dealstage: config.hubspot.dealStageInicialId,
@@ -448,25 +458,56 @@ Deno.serve(async (req) => {
       }
 
       if (config.hubspot.propertyBdrResponsavel) {
-        propsNegocio[config.hubspot.propertyBdrResponsavel] = ownerId
+        nucleo[config.hubspot.propertyBdrResponsavel] = ownerId
       }
       if (config.hubspot.propertyCanal) {
-        propsNegocio[config.hubspot.propertyCanal] = evento.valor_canal || config.hubspot.valorCanal
+        nucleo[config.hubspot.propertyCanal] = evento.valor_canal || config.hubspot.valorCanal
       }
       if (config.hubspot.propertyDetalhamentoOrigem) {
-        propsNegocio[config.hubspot.propertyDetalhamentoOrigem] = evento.valor_detalhamento_origem
+        nucleo[config.hubspot.propertyDetalhamentoOrigem] = evento.valor_detalhamento_origem
       }
       if (config.hubspot.propertyOrigemNegocio && config.hubspot.valorOrigemNegocio) {
-        propsNegocio[config.hubspot.propertyOrigemNegocio] = config.hubspot.valorOrigemNegocio
-      }
-      if (config.hubspot.propertyPlataforma && lead.plataforma_ecommerce) {
-        propsNegocio[config.hubspot.propertyPlataforma] = lead.plataforma_ecommerce
+        nucleo[config.hubspot.propertyOrigemNegocio] = config.hubspot.valorOrigemNegocio
       }
       if (config.hubspot.propertyIdCaptura) {
-        propsNegocio[config.hubspot.propertyIdCaptura] = lead.id
+        nucleo[config.hubspot.propertyIdCaptura] = lead.id
       }
 
-      const negocio = await hs.criarNegocio(propsNegocio)
+      // Espelho: os dados de qualificacao no proprio negocio, para o closer nao
+      // precisar abrir o contato. Cada um so entra se estiver configurado.
+      const espelho: Record<string, string> = {}
+      const espelhar = (property: string, valor?: string | null) => {
+        if (property && valor?.trim()) espelho[property] = valor.trim()
+      }
+
+      espelhar(config.hubspot.propertyNomeLead, lead.nome)
+      espelhar(config.hubspot.propertyCargoLead, lead.cargo)
+      espelhar(config.hubspot.propertyTelefoneLead, lead.telefone)
+      espelhar(config.hubspot.propertyEmailLead, email)
+      espelhar(config.hubspot.propertyInstagramLead, normalizarInstagram(lead.instagram))
+      espelhar(config.hubspot.propertySiteLead, normalizarSite(lead.site))
+      espelhar(config.hubspot.propertyPlataforma, lead.plataforma_ecommerce)
+
+      let negocio: { id: string }
+      try {
+        negocio = await hs.criarNegocio({ ...nucleo, ...espelho })
+      } catch (erro) {
+        // Uma property de espelho mal configurada (nome errado, tipo errado,
+        // valor fora de um enum) devolve 400 e derrubaria a captura inteira.
+        // Preferimos o negocio sem os campos extras: a nota abaixo continua
+        // levando tudo, e o lead nao fica preso no aparelho por causa de
+        // configuracao. O aviso fica no log para alguem consertar depois.
+        const ehRecusa = erro instanceof hs.HubSpotError && erro.status === 400
+        if (!ehRecusa || Object.keys(espelho).length === 0) throw erro
+
+        console.warn(
+          `[sync-lead][${lead.id}] HubSpot recusou as properties de espelho ` +
+            `(${Object.keys(espelho).join(', ')}). Criando o negocio sem elas. ` +
+            `Confira os nomes e tipos: ${erro.corpo}`,
+        )
+        negocio = await hs.criarNegocio(nucleo)
+      }
+
       dealId = negocio.id
       log('negocio criado', dealId)
       await salvar({ hubspot_deal_id: dealId })
