@@ -22,10 +22,16 @@ export const config = {
     pipelineId: env('HUBSPOT_PIPELINE_ID', '139031732'),
 
     /**
-     * Etapa inicial. 238830451 = "Contato": o lead de evento ja teve conversa
-     * presencial, entao nasce um passo a frente de "Prospect/Pesquisa".
+     * Etapa inicial: 238830452 = "Qualificacao" no pipeline Vendas Diretas.
+     * O lead de evento chega com conversa presencial e dados coletados, entao
+     * entra ja qualificado — nao em "Prospect/Pesquisa" nem em "Contato".
+     *
+     * Quem agenda reuniao no estande deve seguir para "Discovery Call"
+     * (972200814), mas essa mudanca e workflow do HubSpot disparado pela
+     * reuniao marcada, nao deste app: so o HubSpot sabe se o horario foi
+     * mesmo confirmado.
      */
-    dealStageInicialId: env('HUBSPOT_DEAL_STAGE_INICIAL_ID', '238830451'),
+    dealStageInicialId: env('HUBSPOT_DEAL_STAGE_INICIAL_ID', '238830452'),
 
     /** Canal do lead: enum no negocio. */
     propertyCanal: env('HUBSPOT_PROPERTY_CANAL', 'canal_de_lead'),
