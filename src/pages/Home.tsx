@@ -143,6 +143,29 @@ export function Home() {
           )}
         </section>
 
+        {/* Painel só aparece para admin — o BDR no estande não precisa dele. */}
+        {usuario?.papel === 'admin' && (
+          <Link to="/painel" className="block">
+            <Card className="flex items-center gap-3 transition hover:bg-white/[0.07]">
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Painel</p>
+                <p className="text-xs text-white/45">
+                  Equipe, eventos e leads de todos
+                </p>
+              </div>
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-white/35" fill="none" aria-hidden>
+                <path
+                  d="M9 5l7 7-7 7"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </Card>
+          </Link>
+        )}
+
         <div className="pt-4 text-center">
           <button
             onClick={() => void sair().then(() => navegar('/login'))}

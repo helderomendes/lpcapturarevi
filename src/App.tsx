@@ -9,6 +9,7 @@ import { Captura } from '@/pages/Captura'
 import { Fila } from '@/pages/Fila'
 import { Home } from '@/pages/Home'
 import { Login } from '@/pages/Login'
+import { Painel } from '@/pages/Painel'
 import { PosSalvamento } from '@/pages/PosSalvamento'
 import type { ReactNode } from 'react'
 
@@ -72,6 +73,14 @@ function Rotas() {
         element={
           <Protegida>
             <Fila />
+          </Protegida>
+        }
+      />
+      <Route
+        path="/painel"
+        element={
+          <Protegida>
+            <Painel />
           </Protegida>
         }
       />

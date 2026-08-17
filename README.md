@@ -92,6 +92,19 @@ rede **e** acesso ao inbox, os dois indisponíveis num corredor de feira.
 
 ## 4. Como criar um usuário
 
+**Pelo painel do app (recomendado).** Entre como `admin` → **Painel → Equipe → Novo
+acesso**. Informe e-mail, senha provisória e papel. O owner ID do HubSpot é resolvido
+pelo e-mail automaticamente — ninguém precisa procurar ID em tela nenhuma.
+
+Se a pessoa não tiver usuário no HubSpot, o acesso **não** é criado. É de propósito: um
+login sem owner vinculado entra com a senha certa e é deslogado na hora, o que parece
+bug e não é. Melhor recusar na hora, com o motivo escrito.
+
+Repetir o cadastro com o mesmo e-mail troca a senha — é o caminho para reset.
+
+**Pelo SQL (alternativa).** Útil para o primeiro admin, antes de existir alguém que possa
+usar o painel:
+
 1. Painel do Supabase → **Authentication → Users → Add user**. Informe e-mail e senha,
    e marque *Auto Confirm User*.
 2. Descubra o HubSpot owner ID da pessoa (ver §7).
@@ -121,6 +134,12 @@ qualquer usuário logado poderia se promover a `admin` passando o próprio e-mai
 
 **Este é o passo que a equipe repete a cada feira.** Não exige deploy nem alteração de
 código.
+
+**Pelo painel:** entre como `admin` → **Painel → Eventos → Novo evento**. Nome, datas e,
+opcionalmente, um link de agendamento próprio da feira. O evento nasce ativo, e o
+seletor da home passa a oferecê-lo na hora.
+
+**Pelo SQL:**
 
 ```sql
 insert into public.eventos
@@ -156,8 +175,14 @@ Colunas opcionais:
 
 ```bash
 supabase functions deploy sync-lead
+supabase functions deploy admin-usuarios
 supabase secrets set --env-file supabase/.env.local
 ```
+
+Há duas funções: `sync-lead`, que materializa o lead no HubSpot, e `admin-usuarios`, que
+cria acessos e resolve o owner ID pelo e-mail. As duas validam a sessão do Supabase antes
+de agir, e `admin-usuarios` recusa quem não é `admin`. Cada função carrega as próprias
+dependências em `lib/`, para o deploy ser autocontido.
 
 O `supabase/.env.local` (não versionado) carrega os segredos listados na seção
 **EDGE FUNCTION** do `.env.example`. No mínimo, `HUBSPOT_TOKEN`.
@@ -347,6 +372,16 @@ app shell — é o que permite abrir offline em cold start.
   aparece na fila.
 - **Fila** — pendentes e erros, com *Sincronizar agora*, mensagem de erro legível por
   lead, botão de reenviar e o aviso de conflito de duplicata com as duas opções.
+- **Painel** — só para `admin`, escondido para os demais. Três abas:
+  - **Equipe** — cria acessos (com o vínculo ao HubSpot resolvido pelo e-mail), lista
+    quem existe e permite desativar/reativar.
+  - **Eventos** — cria eventos e liga/desliga os existentes.
+  - **Leads** — todos os leads já sincronizados, de toda a equipe, com filtro por evento,
+    por BDR e por status. Leads pendentes **não** aparecem aqui: eles vivem no aparelho de
+    quem captou até subirem.
+
+  Ao contrário do resto do app, o painel exige rede. Toda consulta tem teto de 12s e
+  falha com mensagem escrita — nunca com spinner infinito.
 
 ---
 
