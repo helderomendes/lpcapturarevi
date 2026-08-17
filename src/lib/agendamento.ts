@@ -15,6 +15,15 @@ export interface DadosAgendamento {
   email: string
   empresa: string
   telefone: string
+  site?: string | null
+  cargo?: string | null
+}
+
+/** O BDR digita "loja.com.br"; o HubSpot espera URL. */
+function normalizarSite(site?: string | null): string | null {
+  const valor = (site ?? '').trim()
+  if (!valor) return null
+  return valor.startsWith('http') ? valor : `https://${valor}`
 }
 
 /** Link do evento quando houver; senao o padrao do .env. */
@@ -42,6 +51,13 @@ export function montarLinkAgendamento(
   url.searchParams.set('email', dados.email.trim().toLowerCase())
   url.searchParams.set('company', dados.empresa.trim())
   url.searchParams.set('phone', dados.telefone.trim())
+
+  // O HubSpot preenche um campo do formulario de reuniao pelo nome interno da
+  // property. Se o formulario nao tiver o campo, o parametro e simplesmente
+  // ignorado — entao mandar nao custa nada, e faltar custa o visitante digitar.
+  const site = normalizarSite(dados.site)
+  if (site) url.searchParams.set('website', site)
+  if (dados.cargo?.trim()) url.searchParams.set('jobtitle', dados.cargo.trim())
 
   // Atribuicao: a reuniao agendada no estande fica rastreavel ate o evento.
   if (evento) {
