@@ -37,10 +37,23 @@ export const config = {
     propertyCanal: env('HUBSPOT_PROPERTY_CANAL', 'canal_de_lead'),
     valorCanal: env('HUBSPOT_VALOR_CANAL', 'Eventos'),
 
-    /** Detalhamento de origem: texto livre. O valor vem do evento. */
+    /**
+     * Cuidado: existem DUAS properties parecidas no negocio.
+     *
+     * `detalhamento_de_origem`            -> texto livre, aceita qualquer valor
+     * `detalhamento_de_origem_do_negocio` -> DROPDOWN, so aceita opcao existente
+     *
+     * O app preenche as duas. A de texto livre guarda o nome exato do evento
+     * sempre; a de dropdown e a que a operacao usa para filtrar e relatorio, e
+     * exige que o evento exista como opcao no HubSpot.
+     */
     propertyDetalhamentoOrigem: env(
       'HUBSPOT_PROPERTY_DETALHAMENTO_ORIGEM',
       'detalhamento_de_origem',
+    ),
+    propertyDetalhamentoOrigemNegocio: env(
+      'HUBSPOT_PROPERTY_DETALHAMENTO_ORIGEM_NEGOCIO',
+      'detalhamento_de_origem_do_negocio',
     ),
 
     /** BDR responsavel: enum cujos valores sao HubSpot owner IDs. */

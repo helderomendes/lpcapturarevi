@@ -38,7 +38,6 @@ interface Formulario {
   plataforma: string
   plataformaOutra: string
   observacoes: string
-  consentimento: boolean
 }
 
 const FORM_VAZIO: Formulario = {
@@ -52,7 +51,6 @@ const FORM_VAZIO: Formulario = {
   plataforma: '',
   plataformaOutra: '',
   observacoes: '',
-  consentimento: false,
 }
 
 export function Captura() {
@@ -98,7 +96,6 @@ export function Captura() {
         plataforma: lead.plataforma_outra ? 'Outra' : (lead.plataforma_ecommerce ?? ''),
         plataformaOutra: lead.plataforma_outra ?? '',
         observacoes: lead.observacoes ?? '',
-        consentimento: lead.consentimento_lgpd,
       })
       setCarregandoLead(false)
     })
@@ -115,10 +112,6 @@ export function Captura() {
     if (!usuario || !evento) return
 
     const novosErros = validarObrigatorios(form)
-    // O consentimento so e obrigatorio quando o proprio visitante preenche.
-    if (modo === 'cliente' && !form.consentimento) {
-      novosErros.consentimento = 'É necessário aceitar para continuar'
-    }
     setErros(novosErros)
     if (temErro(novosErros)) {
       document.querySelector('[aria-invalid="true"]')?.scrollIntoView({
@@ -166,10 +159,10 @@ export function Captura() {
       plataforma_outra: ehOutra ? form.plataformaOutra.trim() || null : null,
       observacoes: form.observacoes.trim() || null,
 
-      consentimento_lgpd: form.consentimento,
-      consentimento_em: form.consentimento
-        ? (leadOriginal?.consentimento_em ?? agora)
-        : null,
+      // O visitante entrega os dados sabendo que vai receber contato, e o
+      // aviso esta na tela. O que importa registrar e quando isso aconteceu.
+      consentimento_lgpd: true,
+      consentimento_em: leadOriginal?.consentimento_em ?? agora,
 
       agendou_reuniao: leadOriginal?.agendou_reuniao ?? false,
       // Abrir o link nao significa ter agendado: quem confirma e o BDR.
@@ -369,41 +362,14 @@ export function Captura() {
                 onChange={(e) => definir('observacoes', e.target.value)}
               />
 
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-6 w-6 min-h-0 shrink-0 accent-revi-500"
-                  checked={form.consentimento}
-                  onChange={(e) => definir('consentimento', e.target.checked)}
-                />
-                <span className="text-sm text-white/70">
-                  O visitante autorizou contato por e-mail e WhatsApp (LGPD).
-                </span>
-              </label>
             </Card>
           )}
 
-          {/* ------------------------------------------------------------- */}
-          {/* Consentimento no modo cliente: obrigatorio, curto e claro.      */}
-          {/* ------------------------------------------------------------- */}
+          {/* Aviso de LGPD como texto, nao como checkbox: o consentimento
+              acontece na conversa do estande, e um toque a mais so atrasa a
+              fila. Fica registrada a divulgacao e a hora da captura. */}
           {modo === 'cliente' && (
-            <Card className={erros.consentimento ? 'border-red-400/50' : ''}>
-              <label className="flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-7 w-7 min-h-0 shrink-0 accent-revi-500"
-                  checked={form.consentimento}
-                  onChange={(e) => definir('consentimento', e.target.checked)}
-                  aria-invalid={Boolean(erros.consentimento)}
-                />
-                <span className="text-[15px] leading-relaxed text-white/80">{TEXTO_LGPD}</span>
-              </label>
-              {erros.consentimento && (
-                <p role="alert" className="mt-2 text-sm text-red-300">
-                  {erros.consentimento}
-                </p>
-              )}
-            </Card>
+            <p className="px-1 text-[13px] leading-relaxed text-white/45">{TEXTO_LGPD}</p>
           )}
 
           {/* Duas saidas, lado a lado: salvar e seguir, ou salvar ja abrindo o

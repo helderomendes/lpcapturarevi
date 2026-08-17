@@ -139,6 +139,10 @@ export function criarNegocio(properties: Props): Promise<Registro> {
   return request<Registro>('POST', '/crm/v3/objects/deals', { properties })
 }
 
+export function atualizarNegocio(id: string, properties: Props): Promise<Registro> {
+  return request<Registro>('PATCH', `/crm/v3/objects/deals/${id}`, { properties })
+}
+
 export function criarNota(corpoHtml: string, quando: string): Promise<Registro> {
   return request<Registro>('POST', '/crm/v3/objects/notes', {
     properties: { hs_timestamp: quando, hs_note_body: corpoHtml },

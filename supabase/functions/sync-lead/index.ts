@@ -537,6 +537,28 @@ Deno.serve(async (req) => {
       dealId = negocio.id
       log('negocio criado', dealId)
       await salvar({ hubspot_deal_id: dealId })
+
+      // O "Detalhamento de Origem do Negocio" e um dropdown: se o evento ainda
+      // nao existe como opcao no HubSpot, a chamada e recusada. Por isso vai
+      // separado do create — assim a recusa nao leva junto o negocio inteiro
+      // nem as outras properties. O nome exato do evento fica gravado de
+      // qualquer forma na property de texto livre.
+      const propDropdown = config.hubspot.propertyDetalhamentoOrigemNegocio
+      if (propDropdown && evento.valor_detalhamento_origem) {
+        try {
+          await hs.atualizarNegocio(dealId, {
+            [propDropdown]: evento.valor_detalhamento_origem,
+          })
+          log('detalhamento de origem do negocio aplicado', evento.valor_detalhamento_origem)
+        } catch (erro) {
+          console.warn(
+            `[sync-lead][${lead.id}] nao consegui gravar ${propDropdown}=` +
+              `"${evento.valor_detalhamento_origem}". Provavelmente falta essa opcao no ` +
+              `dropdown do HubSpot (Configuracoes > Propriedades > Negocio). ` +
+              erroLegivel(erro),
+          )
+        }
+      }
     }
 
     // --- 9. Associacoes ---------------------------------------------------

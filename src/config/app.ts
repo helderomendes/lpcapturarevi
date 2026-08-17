@@ -18,37 +18,39 @@ export const LINK_AGENDAMENTO_PADRAO = (
  * Enviar qualquer coisa fora desta lista faz a API devolver 400 — por isso
  * "Outra" grava o valor `Outros` e o texto livre vai para a nota do negocio.
  */
-export const PLATAFORMAS_ECOMMERCE = [
-  'Shopify',
-  'VTEX',
-  'NuvemShop',
-  'Tray',
-  'Loja Integrada',
-  'WooCommerce',
-  'Magento',
-  'Magazord',
-  'Wake Commerce',
-  'Yampi',
-  'CartPanda',
+export const PLATAFORMAS_ECOMMERCE: readonly string[] = [
   'Bling',
-  'Tiny',
-  'Linux Commerce',
-  'Shoppub',
-  'JET Commerce',
-  'VNDA',
-  'Millennium',
-  'Uappi',
-  'Iroba',
   'Braavo',
-  'Unbox',
-  'Visual E-Commerce',
-  'Varejo Online',
-  'Venda Ai',
+  'CartPanda',
+  'Desenvolvimento Próprio',
   'Guru Digital',
+  'Iroba',
+  'JET Commerce',
+  'Linux Commerce',
+  'Loja Integrada',
+  'Magazord',
+  'Magento',
+  'Millennium',
+  'NuvemShop',
   'Ommy',
   'Ormie',
-  'Desenvolvimento Próprio',
-] as const
+  'Shopify',
+  'Shoppub',
+  'Tiny',
+  'Tray',
+  'Uappi',
+  'Unbox',
+  'Varejo Online',
+  'Venda Ai',
+  'Visual E-Commerce',
+  'VNDA',
+  'VTEX',
+  'Wake Commerce',
+  'WooCommerce',
+  'Yampi',
+  // Ordenado no carregamento, e nao so na mao: incluir uma plataforma nova no
+  // meio da lista nao pode virar um item fora de ordem no dropdown.
+].sort((a, b) => a.localeCompare(b, 'pt-BR'))
 
 /**
  * Valor do enum usado quando o BDR escolhe "Outra".
@@ -62,10 +64,18 @@ export const VALOR_HUBSPOT_PLATAFORMA: Record<string, string> = {
   VNDA: 'Vinda',
 }
 
+/**
+ * Aviso de LGPD, exibido como texto e nao como checkbox.
+ *
+ * O consentimento acontece na conversa do estande — o visitante entrega os
+ * dados sabendo que vai receber contato. Transformar isso num toque extra so
+ * atrasa a fila sem acrescentar prova nenhuma. O que fica registrado e a
+ * divulgacao (este texto) mais a data e hora da captura.
+ */
 export const TEXTO_LGPD =
-  'Autorizo a Revi a entrar em contato comigo por e-mail e WhatsApp sobre suas ' +
-  'soluções, e o tratamento dos meus dados conforme a LGPD. Posso solicitar a ' +
-  'remoção a qualquer momento.'
+  'Ao enviar, você autoriza a Revi a entrar em contato por e-mail e WhatsApp ' +
+  'sobre suas soluções, e o tratamento dos seus dados conforme a LGPD. ' +
+  'Você pode solicitar a remoção a qualquer momento.'
 
 /** Cadencia da fila offline. */
 export const SYNC = {
