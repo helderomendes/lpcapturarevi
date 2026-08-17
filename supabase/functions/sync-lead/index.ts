@@ -405,13 +405,13 @@ Deno.serve(async (req) => {
         }
         if (lastname) propsContato.lastname = lastname
         if (lead.cargo) propsContato.jobtitle = lead.cargo
-        const site = normalizarSite(lead.site)
-        if (site) propsContato.website = site
+        const siteContato = normalizarSite(lead.site)
+        if (siteContato) propsContato.website = siteContato
         propsContato.hubspot_owner_id = ownerId
 
-        const instagram = normalizarInstagram(lead.instagram)
-        if (instagram && config.hubspot.propertyInstagramContato) {
-          propsContato[config.hubspot.propertyInstagramContato] = instagram
+        const instagramContato = normalizarInstagram(lead.instagram)
+        if (instagramContato && config.hubspot.propertyInstagramContato) {
+          propsContato[config.hubspot.propertyInstagramContato] = instagramContato
         }
 
         const contato = await hs.criarContato(propsContato)
@@ -424,23 +424,53 @@ Deno.serve(async (req) => {
     // --- 7. Empresa -------------------------------------------------------
     if (!companyId) {
       const dominio = extrairDominio(lead.site, email)
+      const site = normalizarSite(lead.site)
+      const instagram = normalizarInstagram(lead.instagram)
+      const propInstagram = config.hubspot.propertyInstagramEmpresa
+
+      let jaExistia: { id: string; properties: Record<string, string | null> } | undefined
       if (dominio) {
         const busca = await hs.buscarEmpresaPorDominio(dominio)
-        companyId = busca.results[0]?.id ?? null
+        jaExistia = busca.results[0]
+        companyId = jaExistia?.id ?? null
       }
 
       if (!companyId) {
         const propsEmpresa: Record<string, string> = { name: lead.empresa }
         if (dominio) propsEmpresa.domain = dominio
-        const site = normalizarSite(lead.site)
         if (site) propsEmpresa.website = site
+        if (instagram && propInstagram) propsEmpresa[propInstagram] = instagram
         propsEmpresa.hubspot_owner_id = ownerId
 
         const empresa = await hs.criarEmpresa(propsEmpresa)
         companyId = empresa.id
         log('empresa criada', companyId)
       } else {
-        log('empresa existente reaproveitada', companyId)
+        // Empresa que ja existia: completa o que esta vazio e nunca sobrescreve.
+        // Site e Instagram de uma loja nao mudam por causa de um lead novo, e
+        // apagar o que alguem preencheu a mao seria pior do que nao preencher.
+        const completar: Record<string, string> = {}
+        const atual = jaExistia!.properties
+
+        if (site && !atual.website?.trim()) completar.website = site
+        if (instagram && propInstagram && !atual[propInstagram]?.trim()) {
+          completar[propInstagram] = instagram
+        }
+
+        if (Object.keys(completar).length > 0) {
+          try {
+            await hs.atualizarEmpresa(companyId, completar)
+            log('empresa existente completada', Object.keys(completar))
+          } catch (erro) {
+            // Campo complementar nao derruba a captura.
+            console.warn(
+              `[sync-lead][${lead.id}] nao consegui completar a empresa ${companyId}: ` +
+                erroLegivel(erro),
+            )
+          }
+        } else {
+          log('empresa existente reaproveitada', companyId)
+        }
       }
       await salvar({ hubspot_company_id: companyId })
     }
@@ -473,8 +503,8 @@ Deno.serve(async (req) => {
         nucleo[config.hubspot.propertyIdCaptura] = lead.id
       }
 
-      // Espelho: os dados de qualificacao no proprio negocio, para o closer nao
-      // precisar abrir o contato. Cada um so entra se estiver configurado.
+      // Espelho: quem e o lead, no proprio negocio. Telefone, e-mail e site nao
+      // entram aqui — o contato e a empresa ja os recebem nos campos padrao.
       const espelho: Record<string, string> = {}
       const espelhar = (property: string, valor?: string | null) => {
         if (property && valor?.trim()) espelho[property] = valor.trim()
@@ -482,10 +512,6 @@ Deno.serve(async (req) => {
 
       espelhar(config.hubspot.propertyNomeLead, lead.nome)
       espelhar(config.hubspot.propertyCargoLead, lead.cargo)
-      espelhar(config.hubspot.propertyTelefoneLead, lead.telefone)
-      espelhar(config.hubspot.propertyEmailLead, email)
-      espelhar(config.hubspot.propertyInstagramLead, normalizarInstagram(lead.instagram))
-      espelhar(config.hubspot.propertySiteLead, normalizarSite(lead.site))
       espelhar(config.hubspot.propertyPlataforma, lead.plataforma_ecommerce)
 
       let negocio: { id: string }

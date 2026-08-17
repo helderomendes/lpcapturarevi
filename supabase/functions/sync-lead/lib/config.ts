@@ -51,22 +51,22 @@ export const config = {
     ),
 
     /**
-     * Espelho dos dados do lead no proprio negocio, para o closer nao precisar
-     * abrir o contato. Vazio = nao preenche.
+     * Espelho no negocio, para o closer nao precisar abrir o contato. As duas
+     * existem no portal e sao texto livre. Vazio = nao preenche.
      *
-     * Os dois primeiros existem no portal e sao texto livre. Os quatro de baixo
-     * NAO existem ainda — precisam ser criados como texto de linha unica no
-     * negocio. Cuidado ao escolher o nome: existem properties parecidas que sao
-     * outra coisa (`whatsapp_atual` e um enum Sim/Nao sobre uso de WhatsApp,
-     * `seguidores_no_instagram` e faixa de seguidores, `cargo_do_lead` e um enum
-     * legado, `telefone_2` e numerico). Apontar para uma delas quebra o envio.
+     * Nao aponte para `cargo_do_lead`: e um enum legado de 8 opcoes fixas, e
+     * cargo digitado a mao nao caberia nele.
      */
     propertyNomeLead: env('HUBSPOT_PROPERTY_NOME_LEAD', 'nome_do_lead'),
     propertyCargoLead: env('HUBSPOT_PROPERTY_CARGO_LEAD', 'lead_cargo'),
-    propertyTelefoneLead: env('HUBSPOT_PROPERTY_TELEFONE_LEAD', ''),
-    propertyEmailLead: env('HUBSPOT_PROPERTY_EMAIL_LEAD', ''),
-    propertyInstagramLead: env('HUBSPOT_PROPERTY_INSTAGRAM_LEAD', ''),
-    propertySiteLead: env('HUBSPOT_PROPERTY_SITE_LEAD', ''),
+
+    /**
+     * Instagram da loja, na EMPRESA. Telefone e e-mail nao entram aqui porque
+     * o contato ja os recebe nos campos padrao.
+     *
+     * Nao confundir com `instagram_followers`, que e numerico.
+     */
+    propertyInstagramEmpresa: env('HUBSPOT_PROPERTY_INSTAGRAM_EMPRESA', 'instagram'),
 
     /**
      * ⚠️ PREENCHER — property de texto no negocio com o UUID de captura.

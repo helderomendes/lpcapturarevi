@@ -74,9 +74,17 @@ export function buscarContatoPorEmail(email: string): Promise<RespostaBusca> {
 }
 
 export function buscarEmpresaPorDominio(dominio: string): Promise<RespostaBusca> {
+  // Traz site e Instagram tambem: se a empresa ja existir com esses campos
+  // vazios, a gente completa — e precisa saber que estao vazios para nao
+  // sobrescrever o que alguem preencheu a mao.
+  const properties = ['name', 'domain', 'website']
+  if (config.hubspot.propertyInstagramEmpresa) {
+    properties.push(config.hubspot.propertyInstagramEmpresa)
+  }
+
   return request<RespostaBusca>('POST', '/crm/v3/objects/companies/search', {
     filterGroups: [{ filters: [{ propertyName: 'domain', operator: 'EQ', value: dominio }] }],
-    properties: ['name', 'domain'],
+    properties,
     limit: 1,
   })
 }
@@ -120,6 +128,11 @@ export function criarContato(properties: Props): Promise<Registro> {
 
 export function criarEmpresa(properties: Props): Promise<Registro> {
   return request<Registro>('POST', '/crm/v3/objects/companies', { properties })
+}
+
+/** Usado somente para completar campos vazios de uma empresa que ja existia. */
+export function atualizarEmpresa(id: string, properties: Props): Promise<Registro> {
+  return request<Registro>('PATCH', `/crm/v3/objects/companies/${id}`, { properties })
 }
 
 export function criarNegocio(properties: Props): Promise<Registro> {
