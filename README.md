@@ -238,14 +238,39 @@ O `supabase/.env.local` (não versionado) carrega os segredos listados na seçã
 3. Busca duplicata de contato por e-mail. Se existir, **não sobrescreve nada e não rouba
    a propriedade do registro** — devolve `duplicado` com o nome do dono atual, e o BDR
    decide na tela: anexar nota ao existente ou criar mesmo assim.
-4. Busca a empresa pelo domínio (extraído do site ou do e-mail, ignorando provedores
-   pessoais como Gmail); cria se não existir.
-5. Cria o contato.
+4. Cria o contato — ou reaproveita o existente, quando o BDR escolheu *criar mesmo assim*.
+5. Resolve a empresa, **nesta ordem**: (a) empresas já associadas ao contato, lidas por
+   associação; (b) busca pelo domínio (extraído do site ou do e-mail, ignorando
+   provedores pessoais como Gmail); (c) segunda olhada nas associações, após uma pausa
+   curta; (d) cria. Uma empresa reaproveitada tem nome, domínio, site, Instagram e dono
+   completados **só onde estiverem vazios** — o que alguém preencheu à mão nunca é
+   sobrescrito. Ver *Por que a ordem importa*, abaixo.
 6. Cria o negócio no pipeline e etapa configurados, com `hubspot_owner_id` e
    `bdr_responsavel` = o BDR que captou, e canal + detalhamento de origem vindos do evento.
 7. Associa contato ↔ empresa ↔ negócio.
 8. Cria uma nota no negócio com as observações do BDR e a plataforma de e-commerce.
 9. Devolve os três IDs; o app marca o lead como `enviado`.
+
+### Por que a ordem importa (empresa duplicada)
+
+O portal tem ligada a configuração **"Criar e associar empresas a contatos"**. Ela cria
+uma empresa no instante em que o contato nasce, tirando o domínio do e-mail. Quando esse
+domínio não tem enriquecimento no HubSpot, a empresa nasce **sem nome e sem dono** — é a
+linha `--` na lista de empresas.
+
+O índice da Search API leva alguns segundos para enxergar registro novo. Então buscar a
+empresa por domínio logo depois de criar o contato devolvia vazio, e a função criava uma
+**segunda** empresa com o mesmo domínio: duas empresas no mesmo cadastro, uma delas sem
+nome.
+
+Por isso a resolução começa pelas **associações do contato**, que são leitura direta e
+não passam pelo índice, e só cai na busca por domínio depois. A terceira tentativa existe
+porque a configuração do HubSpot demora alguns décimos de segundo para materializar a
+empresa: essa pausa é paga apenas no caminho em que a empresa seria criada de qualquer
+forma, e é pulada quando não há domínio (sem domínio a configuração não dispara).
+
+Desligar a configuração no HubSpot resolveria também, mas ela atende outros fluxos do
+time além deste app — é decisão de operação, não de código.
 
 ### Idempotência
 

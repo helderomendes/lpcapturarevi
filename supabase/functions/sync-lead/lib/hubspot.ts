@@ -56,7 +56,7 @@ async function request<T>(
   )
 }
 
-type Registro = { id: string; properties: Record<string, string | null> }
+export type Registro = { id: string; properties: Record<string, string | null> }
 type RespostaBusca = { total: number; results: Registro[] }
 
 // ---------------------------------------------------------------------------
@@ -73,20 +73,52 @@ export function buscarContatoPorEmail(email: string): Promise<RespostaBusca> {
   })
 }
 
-export function buscarEmpresaPorDominio(dominio: string): Promise<RespostaBusca> {
-  // Traz site e Instagram tambem: se a empresa ja existir com esses campos
-  // vazios, a gente completa — e precisa saber que estao vazios para nao
-  // sobrescrever o que alguem preencheu a mao.
-  const properties = ['name', 'domain', 'website']
+/**
+ * Nome, dono, site e Instagram: se a empresa ja existir com algum desses
+ * campos vazio, a gente completa — e para isso precisa saber que esta vazio,
+ * senao sobrescreveria o que alguem preencheu a mao.
+ */
+function propriedadesEmpresa(): string[] {
+  const properties = ['name', 'domain', 'website', 'hubspot_owner_id']
   if (config.hubspot.propertyInstagramEmpresa) {
     properties.push(config.hubspot.propertyInstagramEmpresa)
   }
+  return properties
+}
 
+export function buscarEmpresaPorDominio(dominio: string): Promise<RespostaBusca> {
   return request<RespostaBusca>('POST', '/crm/v3/objects/companies/search', {
     filterGroups: [{ filters: [{ propertyName: 'domain', operator: 'EQ', value: dominio }] }],
-    properties,
+    properties: propriedadesEmpresa(),
     limit: 1,
   })
+}
+
+/**
+ * Empresas que o contato JA tem, lidas por associacao — nao pela Search API.
+ *
+ * E o que evita a corrida com a configuracao "Criar e associar empresas a
+ * contatos" do portal: ela cria uma empresa no instante em que o contato
+ * nasce, e o indice de busca leva segundos para enxergar esse registro. Nesse
+ * intervalo, buscar por dominio devolve vazio e a gente criava uma SEGUNDA
+ * empresa com o mesmo dominio — uma delas sem nome nenhum, aparecendo como
+ * "--" na lista. Leitura por associacao e imediata e nao passa pelo indice.
+ */
+export async function empresasDoContato(contactId: string): Promise<Registro[]> {
+  const associacoes = await request<{ results?: { toObjectId: string | number }[] }>(
+    'GET',
+    `/crm/v4/objects/contacts/${contactId}/associations/companies?limit=10`,
+  )
+
+  const ids = (associacoes.results ?? []).map((r) => String(r.toObjectId))
+  if (ids.length === 0) return []
+
+  const lote = await request<{ results?: Registro[] }>(
+    'POST',
+    '/crm/v3/objects/companies/batch/read',
+    { properties: propriedadesEmpresa(), inputs: ids.map((id) => ({ id })) },
+  )
+  return lote.results ?? []
 }
 
 /** Segunda barreira de idempotencia: procura o negocio pelo UUID de captura. */
