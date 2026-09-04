@@ -82,16 +82,20 @@ supabase link --project-ref <ref-do-projeto>
 supabase db push
 ```
 
-Ou cole o conteúdo dos dois arquivos, em ordem, no SQL Editor do painel.
+Ou cole o conteúdo dos arquivos, em ordem, no SQL Editor do painel.
 
 O que elas criam:
 
 - `app_users` — mapeia `auth.uid` → HubSpot owner ID. É esse mapeamento que faz o lead
-  nascer atribuído a quem captou, sem o BDR selecionar nada.
+  nascer atribuído a quem captou, sem o BDR selecionar nada. Guarda também o
+  `link_agendamento` da pessoa, quando ela tem agenda própria.
 - `eventos` — nome, `valor_detalhamento_origem`, datas, link de agendamento opcional.
 - `leads` — o registro completo, com `id` gerado no dispositivo (chave de idempotência).
 - **RLS**: o BDR só lê e escreve os leads que ele mesmo capturou; `admin` lê tudo;
   `eventos` é leitura para todos os autenticados. Não existe policy de `delete`.
+  `app_users` não tem policy de **escrita**, e isso é de propósito: todo update de
+  `papel` passa pela Edge Function `admin-usuarios`. Liberado na API pública, seria
+  qualquer usuário logado se promovendo a `admin`.
 
 ### Sessão de 30 dias
 
@@ -115,6 +119,20 @@ login sem owner vinculado entra com a senha certa e é deslogado na hora, o que 
 bug e não é. Melhor recusar na hora, com o motivo escrito.
 
 Repetir o cadastro com o mesmo e-mail troca a senha — é o caminho para reset.
+
+### Editar depois
+
+**Painel → Equipe → Editar**, na linha da pessoa. Dá para ajustar nome, e-mail, papel,
+**link de reunião** e senha, além de desativar/reativar e revincular o owner do HubSpot.
+
+- Trocar o **e-mail** troca o login (`auth.users`), o registro em `app_users` e
+  revincula o owner do HubSpot pelo novo e-mail. As três pontas juntas: deixar qualquer
+  uma atrás é o login que entra com a senha certa e cai na hora.
+- **Revincular ao HubSpot** re-resolve o owner ID pelo e-mail atual. Use quando a pessoa
+  ganhou acesso ao HubSpot depois do cadastro, ou trocou de conta lá.
+- **Link de reunião** é a agenda daquela pessoa e vence o link do evento (ver §5).
+- Ninguém se tranca fora: o último `admin` ativo não pode ser rebaixado nem desativado,
+  e o próprio acesso não tem botão de desativar.
 
 **Pelo SQL (alternativa).** Útil para o primeiro admin, antes de existir alguém que possa
 usar o painel:
@@ -178,8 +196,19 @@ O app cacheia o último evento usado por usuário: ao abrir, ele já vem selecio
 Colunas opcionais:
 
 - `valor_canal` — sobrescreve o canal padrão (`Eventos`) só para este evento.
-- `link_agendamento` — link de reuniões round-robin específico da feira. Útil porque
-  cada evento costuma ter uma escala de closers diferente.
+- `link_agendamento` — link de reuniões específico da feira. Útil porque cada evento
+  costuma ter uma escala de closers diferente.
+
+### Qual link de agendamento o app usa
+
+Do mais específico para o mais genérico:
+
+1. `app_users.link_agendamento` — a agenda de quem captou (**Painel → Equipe**);
+2. `eventos.link_agendamento` — a escala daquela feira (**Painel → Eventos**);
+3. `VITE_LINK_AGENDAMENTO_ROUND_ROBIN` — o revezamento padrão do `.env`.
+
+A pessoa vence o evento porque quem conversou no estande é quem deve receber a reunião.
+Quem não tem agenda própria cadastrada cai na escala da feira.
 
 ---
 
@@ -194,7 +223,7 @@ supabase secrets set --env-file supabase/.env.local
 ```
 
 Há duas funções: `sync-lead`, que materializa o lead no HubSpot, e `admin-usuarios`, que
-cria acessos e resolve o owner ID pelo e-mail. As duas validam a sessão do Supabase antes
+cria e edita acessos (`acao: 'criar' | 'atualizar'`) e resolve o owner ID pelo e-mail. As duas validam a sessão do Supabase antes
 de agir, e `admin-usuarios` recusa quem não é `admin`. Cada função carrega as próprias
 dependências em `lib/`, para o deploy ser autocontido.
 
@@ -276,8 +305,8 @@ Sem ela o app funciona normalmente — a idempotência continua garantida pela t
 
 Só isso. O link de agendamento já vem configurado:
 `https://meetings.hubspot.com/nicholas-love/revezamento-de-qualificacao-`
-— sobrescrevível por evento em `eventos.link_agendamento`, porque a escala de closers
-muda de feira para feira. A roleta é configurada no HubSpot; o app nunca decide quem
+— sobrescrevível por evento em `eventos.link_agendamento` e, com prioridade sobre ele,
+por pessoa em `app_users.link_agendamento` (ver §5). A roleta é configurada no HubSpot; o app nunca decide quem
 atende.
 
 ### Scopes do Private App
@@ -387,8 +416,9 @@ app shell — é o que permite abrir offline em cold start.
 - **Fila** — pendentes e erros, com *Sincronizar agora*, mensagem de erro legível por
   lead, botão de reenviar e o aviso de conflito de duplicata com as duas opções.
 - **Painel** — só para `admin`, escondido para os demais. Três abas:
-  - **Equipe** — cria acessos (com o vínculo ao HubSpot resolvido pelo e-mail), lista
-    quem existe e permite desativar/reativar.
+  - **Equipe** — cria acessos (com o vínculo ao HubSpot resolvido pelo e-mail) e edita
+    os existentes: nome, e-mail, papel, link de reunião, senha, desativar/reativar e
+    revincular ao HubSpot. Quem tem agenda própria aparece com o selo *agenda própria*.
   - **Eventos** — cria eventos e liga/desliga os existentes.
   - **Leads** — todos os leads já sincronizados, de toda a equipe, com filtro por evento,
     por BDR e por status. Leads pendentes **não** aparecem aqui: eles vivem no aparelho de

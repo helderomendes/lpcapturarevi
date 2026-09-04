@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { LINK_AGENDAMENTO_PADRAO } from '@/config/app'
-import type { Evento } from '@/types'
+import type { Evento, Usuario } from '@/types'
 
 export interface DadosAgendamento {
   nome: string
@@ -26,9 +26,24 @@ function normalizarSite(site?: string | null): string | null {
   return valor.startsWith('http') ? valor : `https://${valor}`
 }
 
-/** Link do evento quando houver; senao o padrao do .env. */
-export function baseDoAgendamento(evento: Evento | null): string {
-  return (evento?.link_agendamento ?? LINK_AGENDAMENTO_PADRAO).trim()
+/**
+ * Do mais especifico para o mais generico:
+ *   1. agenda de quem captou   (`app_users.link_agendamento`)
+ *   2. escala da feira         (`eventos.link_agendamento`)
+ *   3. revezamento padrao      (`VITE_LINK_AGENDAMENTO_ROUND_ROBIN`)
+ *
+ * A pessoa vence o evento porque quem conversou no estande e quem deve receber
+ * a reuniao. Quem nao tem agenda propria cadastrada cai na escala da feira.
+ *
+ * Compara com `||` e nao com `??`: link salvo como string vazia ou com espaco
+ * e link nao configurado, e teria vencido o proximo da fila.
+ */
+export function baseDoAgendamento(evento: Evento | null, usuario?: Usuario | null): string {
+  return (
+    usuario?.link_agendamento?.trim() ||
+    evento?.link_agendamento?.trim() ||
+    LINK_AGENDAMENTO_PADRAO
+  ).trim()
 }
 
 export function montarLinkAgendamento(

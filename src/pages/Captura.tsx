@@ -105,7 +105,7 @@ export function Captura() {
   }, [id, navegar])
 
   const opcoesPlataforma = useMemo(() => [...PLATAFORMAS_ECOMMERCE, 'Outra'], [])
-  const temLinkAgendamento = Boolean(baseDoAgendamento(evento))
+  const temLinkAgendamento = Boolean(baseDoAgendamento(evento, usuario))
 
   const salvar = async (e: FormEvent | null, acao: Acao) => {
     e?.preventDefault()
@@ -125,7 +125,7 @@ export function Captura() {
     // qualquer await — senao o navegador trata como popup e bloqueia.
     let abriuAgendamento = false
     if (acao === 'agendar') {
-      const link = montarLinkAgendamento(form, baseDoAgendamento(evento), evento)
+      const link = montarLinkAgendamento(form, baseDoAgendamento(evento, usuario), evento)
       if (link) {
         window.open(link, '_blank', 'noopener,noreferrer')
         abriuAgendamento = true

@@ -31,7 +31,7 @@ export function PosSalvamento() {
 
   if (!lead) return null
 
-  const link = montarLinkAgendamento(lead, baseDoAgendamento(evento), evento)
+  const link = montarLinkAgendamento(lead, baseDoAgendamento(evento, usuario), evento)
 
   const definirAgendamento = async (agendou: boolean) => {
     await atualizarLead(lead.id, {
@@ -107,9 +107,9 @@ export function PosSalvamento() {
           ) : (
             <Card className="border-amber-400/30 bg-amber-400/[0.07]">
               <p className="text-sm text-amber-100">
-                Link de agendamento não configurado. Preencha{' '}
-                <code>VITE_LINK_AGENDAMENTO_ROUND_ROBIN</code> no .env ou{' '}
-                <code>eventos.link_agendamento</code> no Supabase.
+                Link de agendamento não configurado. Cadastre o link de reunião do BDR
+                em <b>Painel → Equipe</b>, ou o link da feira em <b>Painel → Eventos</b>,
+                ou preencha <code>VITE_LINK_AGENDAMENTO_ROUND_ROBIN</code> no .env.
               </p>
             </Card>
           )}

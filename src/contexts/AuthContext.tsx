@@ -28,7 +28,7 @@ const Contexto = createContext<AuthContexto | null>(null)
 async function carregarPerfil(userId: string): Promise<Usuario | null> {
   const { data, error } = await supabase
     .from('app_users')
-    .select('id, nome, email, hubspot_owner_id, papel, ativo')
+    .select('id, nome, email, hubspot_owner_id, papel, ativo, link_agendamento')
     .eq('id', userId)
     .maybeSingle()
 
