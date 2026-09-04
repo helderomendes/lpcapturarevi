@@ -47,15 +47,44 @@ async function exigirSessao(): Promise<string> {
 // Equipe
 // ---------------------------------------------------------------------------
 
+const CAMPOS_USUARIO = 'id, nome, email, hubspot_owner_id, papel, ativo, link_agendamento'
+
 export async function listarEquipe(): Promise<Usuario[]> {
   const { data, error } = await supabase
     .from('app_users')
-    .select('id, nome, email, hubspot_owner_id, papel, ativo')
+    .select(CAMPOS_USUARIO)
     .order('nome')
     .abortSignal(prazo())
 
   if (error) throw new Error(traduzir(error.message))
   return (data ?? []) as Usuario[]
+}
+
+/**
+ * `app_users` nao tem policy de escrita, e isso e de proposito: um update de
+ * `papel` liberado na API publica seria qualquer logado se promovendo a admin.
+ * Toda mudanca de acesso passa pela Edge Function, que roda com service role,
+ * confere o papel de quem chamou e protege o ultimo admin ativo.
+ */
+async function chamarAdminUsuarios<T>(corpo: unknown): Promise<T> {
+  const token = await exigirSessao()
+
+  let resposta: Response
+  try {
+    resposta = await fetch(urlEdgeFunction('admin-usuarios'), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+    })
+  } catch {
+    throw new Error('Sem conexão com o servidor.')
+  }
+
+  const resultado = await resposta.json().catch(() => null)
+  if (!resposta.ok || resultado?.status !== 'ok') {
+    throw new Error(resultado?.erro ?? `Falha no servidor (HTTP ${resposta.status})`)
+  }
+  return resultado as T
 }
 
 export interface NovoAcesso {
@@ -78,30 +107,38 @@ export interface AcessoCriado {
  * Cria (ou reatribui a senha de) um acesso e amarra ao owner do HubSpot. Toda a
  * parte sensivel roda na Edge Function — o front nunca ve service role.
  */
-export async function criarAcesso(dados: NovoAcesso): Promise<AcessoCriado> {
-  const token = await exigirSessao()
-
-  let resposta: Response
-  try {
-    resposta = await fetch(urlEdgeFunction('admin-usuarios'), {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(dados),
-    })
-  } catch {
-    throw new Error('Sem conexão com o servidor.')
-  }
-
-  const corpo = await resposta.json().catch(() => null)
-  if (!resposta.ok || corpo?.status !== 'ok') {
-    throw new Error(corpo?.erro ?? `Falha no servidor (HTTP ${resposta.status})`)
-  }
-  return corpo as AcessoCriado
+export function criarAcesso(dados: NovoAcesso): Promise<AcessoCriado> {
+  return chamarAdminUsuarios<AcessoCriado>({ ...dados, acao: 'criar' })
 }
 
-export async function alternarUsuarioAtivo(id: string, ativo: boolean): Promise<void> {
-  const { error } = await supabase.from('app_users').update({ ativo }).eq('id', id)
-  if (error) throw new Error(traduzir(error.message))
+/**
+ * Edicao de quem ja existe. Somente os campos enviados mudam — omitir e
+ * diferente de mandar vazio, que apaga (no caso do link) ou e recusado (nome).
+ */
+export interface EdicaoUsuario {
+  id: string
+  nome?: string
+  email?: string
+  papel?: Papel
+  ativo?: boolean
+  /** String vazia limpa o link e devolve a pessoa para o link do evento. */
+  link_agendamento?: string | null
+  /** Em branco nao troca a senha. */
+  senha?: string
+  /** Re-resolve o HubSpot owner ID pelo e-mail atual. */
+  revincular?: boolean
+}
+
+export async function atualizarUsuario(dados: EdicaoUsuario): Promise<Usuario> {
+  const resultado = await chamarAdminUsuarios<{ usuario: Usuario }>({
+    ...dados,
+    acao: 'atualizar',
+  })
+  return resultado.usuario
+}
+
+export function alternarUsuarioAtivo(id: string, ativo: boolean): Promise<Usuario> {
+  return atualizarUsuario({ id, ativo })
 }
 
 // ---------------------------------------------------------------------------

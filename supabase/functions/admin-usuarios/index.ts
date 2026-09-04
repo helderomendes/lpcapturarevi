@@ -1,33 +1,62 @@
 // =============================================================================
 // Edge Function `admin-usuarios`
 //
-// Cria o acesso de um BDR e ja amarra ao HubSpot owner ID correspondente,
-// buscado pelo e-mail. Existe para matar o vaivem "painel do Supabase + SQL"
-// que e onde o login quebra silenciosamente: conta criada sem vinculo entra com
-// a senha certa e e deslogada na hora.
+// Cria e mantem o acesso da equipe, sempre amarrado ao HubSpot owner ID
+// correspondente, buscado pelo e-mail. Existe para matar o vaivem "painel do
+// Supabase + SQL" que e onde o login quebra silenciosamente: conta criada sem
+// vinculo entra com a senha certa e e deslogada na hora.
+//
+// Duas acoes:
+//   `criar`     (default) — conta no auth + vinculo em app_users.
+//   `atualizar`           — nome, e-mail, papel, link de reuniao, senha e ativo
+//                           de quem ja existe.
 //
 // Garantias:
 //  - Somente `papel = 'admin'` pode chamar. Sem isso, 403.
-//  - Sem owner ativo no HubSpot para aquele e-mail, nada e criado. Melhor
-//    recusar do que gerar um usuario que captura lead sem dono.
-//  - Idempotente: se a conta ja existe no auth, apenas atualiza o vinculo.
+//  - Sem owner ativo no HubSpot para aquele e-mail, nada e criado nem
+//    revinculado: melhor recusar do que deixar lead nascer sem dono.
+//  - `app_users` nao tem policy de escrita e nao vai ter: todo update de
+//    `papel` passa por aqui. Liberado na API publica, seria escalonamento de
+//    privilegio — qualquer logado se promovendo a admin.
+//  - Ninguem se tranca fora: o ultimo admin ativo nao pode ser rebaixado nem
+//    desativado, e admin nenhum remove o proprio acesso.
 // =============================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 import { corsHeaders, json } from './lib/cors.ts'
 import { ownerPorEmail } from './lib/owners.ts'
 
 type Papel = 'bdr' | 'closer' | 'admin'
+type Acao = 'criar' | 'atualizar'
 
 interface Corpo {
+  acao?: Acao
+  /** Somente em `atualizar`: quem esta sendo editado. */
+  id?: string
   email?: string
   nome?: string
   senha?: string
   papel?: Papel
+  ativo?: boolean
+  link_agendamento?: string | null
+  /** Somente em `atualizar`: re-resolve o owner do HubSpot pelo e-mail atual. */
+  revincular?: boolean
 }
 
 const PAPEIS: Papel[] = ['bdr', 'closer', 'admin']
 const SENHA_MINIMA = 8
+const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+const CAMPOS = 'id, nome, email, hubspot_owner_id, papel, ativo, link_agendamento'
+
+/** Link de agendamento aceita qualquer provedor, mas tem que ser URL http(s). */
+function linkValido(valor: string): boolean {
+  try {
+    const url = new URL(valor)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -75,7 +104,7 @@ Deno.serve(async (req) => {
     return json({ status: 'erro', erro: 'Falha ao verificar permissao' }, 500)
   }
   if (!solicitante?.ativo || solicitante.papel !== 'admin') {
-    return json({ status: 'erro', erro: 'Somente admin pode criar acessos' }, 403)
+    return json({ status: 'erro', erro: 'Somente admin pode gerenciar acessos' }, 403)
   }
 
   // --- 2. Entrada -----------------------------------------------------------
@@ -86,12 +115,24 @@ Deno.serve(async (req) => {
     return json({ status: 'erro', erro: 'JSON invalido' }, 400)
   }
 
+  if (corpo.acao === 'atualizar') {
+    return await atualizar(admin, corpo, auth.user.id)
+  }
+
+  return await criar(admin, corpo)
+})
+
+// ---------------------------------------------------------------------------
+// criar
+// ---------------------------------------------------------------------------
+
+async function criar(admin: SupabaseClient, corpo: Corpo): Promise<Response> {
   const email = (corpo.email ?? '').trim().toLowerCase()
   const nome = (corpo.nome ?? '').trim()
   const senha = corpo.senha ?? ''
   const papel: Papel = PAPEIS.includes(corpo.papel as Papel) ? (corpo.papel as Papel) : 'bdr'
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+  if (!EMAIL_VALIDO.test(email)) {
     return json({ status: 'erro', erro: 'E-mail invalido' }, 400)
   }
   if (senha.length < SENHA_MINIMA) {
@@ -105,7 +146,7 @@ Deno.serve(async (req) => {
     console.log(`[admin-usuarios][${email}] ${msg}`, extra ?? '')
 
   try {
-    // --- 3. Owner no HubSpot ----------------------------------------------
+    // --- Owner no HubSpot ---------------------------------------------------
     // Antes de criar qualquer coisa: sem owner, o lead nasceria sem dono.
     const owner = await ownerPorEmail(email)
     if (!owner) {
@@ -129,7 +170,7 @@ Deno.serve(async (req) => {
 
     log('owner resolvido', owner)
 
-    // --- 4. Conta no auth --------------------------------------------------
+    // --- Conta no auth ------------------------------------------------------
     let userId: string | null = null
     let criou = false
 
@@ -149,18 +190,12 @@ Deno.serve(async (req) => {
       const jaExiste = /already|exists|registered|duplicate/i.test(erroCriar?.message ?? '')
       if (!jaExiste) throw new Error(erroCriar?.message ?? 'Falha ao criar a conta')
 
-      const { data: lista, error: erroLista } = await admin.auth.admin.listUsers({
-        page: 1,
-        perPage: 200,
-      })
-      if (erroLista) throw new Error(`Falha ao localizar a conta existente: ${erroLista.message}`)
-
-      const encontrado = lista.users.find((u) => (u.email ?? '').toLowerCase() === email)
+      const encontrado = await contaPorEmail(admin, email)
       if (!encontrado) {
         throw new Error('A conta existe mas nao apareceu na listagem. Verifique no painel.')
       }
 
-      userId = encontrado.id
+      userId = encontrado
       const { error: erroSenha } = await admin.auth.admin.updateUserById(userId, {
         password: senha,
         email_confirm: true,
@@ -169,7 +204,9 @@ Deno.serve(async (req) => {
       log('conta ja existia, senha atualizada', userId)
     }
 
-    // --- 5. Vinculo em app_users ------------------------------------------
+    // --- Vinculo em app_users ----------------------------------------------
+    // Recadastro nao apaga o link de reuniao de quem ja existia: `upsert` so
+    // manda as colunas abaixo, e `link_agendamento` fica como esta.
     const { error: erroVinculo } = await admin.from('app_users').upsert(
       {
         id: userId,
@@ -200,4 +237,215 @@ Deno.serve(async (req) => {
     console.error(`[admin-usuarios][${email}] falhou:`, mensagem)
     return json({ status: 'erro', erro: mensagem }, 500)
   }
-})
+}
+
+// ---------------------------------------------------------------------------
+// atualizar
+// ---------------------------------------------------------------------------
+
+async function atualizar(
+  admin: SupabaseClient,
+  corpo: Corpo,
+  solicitanteId: string,
+): Promise<Response> {
+  const id = (corpo.id ?? '').trim()
+  if (!id) return json({ status: 'erro', erro: 'Informe o id de quem sera editado' }, 400)
+
+  const { data: alvo, error: erroAlvo } = await admin
+    .from('app_users')
+    .select(CAMPOS)
+    .eq('id', id)
+    .maybeSingle()
+
+  if (erroAlvo) {
+    console.error('[admin-usuarios] falha ao ler o alvo', erroAlvo.message)
+    return json({ status: 'erro', erro: 'Falha ao carregar o usuario' }, 500)
+  }
+  if (!alvo) return json({ status: 'erro', erro: 'Usuario nao encontrado' }, 404)
+
+  const log = (msg: string, extra?: unknown) =>
+    console.log(`[admin-usuarios][${alvo.email}] ${msg}`, extra ?? '')
+
+  const patch: Record<string, unknown> = {}
+
+  // --- Nome ---------------------------------------------------------------
+  if (corpo.nome !== undefined) {
+    const nome = corpo.nome.trim()
+    if (!nome) return json({ status: 'erro', erro: 'O nome nao pode ficar vazio' }, 400)
+    patch.nome = nome
+  }
+
+  // --- Link de reuniao ----------------------------------------------------
+  if (corpo.link_agendamento !== undefined) {
+    const link = (corpo.link_agendamento ?? '').trim()
+    if (link && !linkValido(link)) {
+      return json(
+        { status: 'erro', erro: 'O link de reuniao precisa ser uma URL http(s) completa' },
+        400,
+      )
+    }
+    patch.link_agendamento = link || null
+  }
+
+  // --- Papel e ativo ------------------------------------------------------
+  const novoPapel = corpo.papel !== undefined && PAPEIS.includes(corpo.papel)
+    ? corpo.papel
+    : undefined
+  if (corpo.papel !== undefined && novoPapel === undefined) {
+    return json({ status: 'erro', erro: 'Papel invalido' }, 400)
+  }
+
+  const perdeAdmin = novoPapel !== undefined && novoPapel !== 'admin' && alvo.papel === 'admin'
+  const perdeAcesso = corpo.ativo === false && alvo.ativo
+
+  if (id === solicitanteId && (perdeAdmin || perdeAcesso)) {
+    return json(
+      {
+        status: 'erro',
+        erro: 'Voce nao pode remover o proprio acesso de admin. Pedir para outro admin fazer isso evita ficar sem ninguem no painel.',
+      },
+      400,
+    )
+  }
+
+  // Rebaixar ou desativar o ultimo admin ativo deixaria o painel inacessivel
+  // e sem caminho de volta pela aplicacao — so por SQL no Supabase.
+  if (alvo.papel === 'admin' && alvo.ativo && (perdeAdmin || perdeAcesso)) {
+    const { count, error } = await admin
+      .from('app_users')
+      .select('id', { count: 'exact', head: true })
+      .eq('papel', 'admin')
+      .eq('ativo', true)
+
+    if (error) {
+      console.error('[admin-usuarios] falha ao contar admins', error.message)
+      return json({ status: 'erro', erro: 'Falha ao validar a mudanca de papel' }, 500)
+    }
+    if ((count ?? 0) <= 1) {
+      return json(
+        {
+          status: 'erro',
+          erro: 'Este e o unico admin ativo. Promova outra pessoa a admin antes de mudar este acesso.',
+        },
+        400,
+      )
+    }
+  }
+
+  if (novoPapel !== undefined) patch.papel = novoPapel
+  if (corpo.ativo !== undefined) patch.ativo = Boolean(corpo.ativo)
+
+  try {
+    // --- E-mail -----------------------------------------------------------
+    // Muda em auth.users e em app_users, e revincula o owner do HubSpot: sao
+    // as tres pontas do mesmo dado. Deixar qualquer uma para tras e o cenario
+    // do login que entra e cai na hora.
+    const emailNovo = (corpo.email ?? '').trim().toLowerCase()
+    const trocouEmail = Boolean(emailNovo) && emailNovo !== alvo.email
+
+    if (emailNovo && !EMAIL_VALIDO.test(emailNovo)) {
+      return json({ status: 'erro', erro: 'E-mail invalido' }, 400)
+    }
+
+    if (trocouEmail) {
+      const { data: ocupado } = await admin
+        .from('app_users')
+        .select('nome')
+        .eq('email', emailNovo)
+        .neq('id', id)
+        .maybeSingle()
+
+      if (ocupado) {
+        return json(
+          { status: 'erro', erro: `O e-mail ${emailNovo} ja pertence a ${ocupado.nome}.` },
+          409,
+        )
+      }
+    }
+
+    if (trocouEmail || corpo.revincular) {
+      const owner = await ownerPorEmail(trocouEmail ? emailNovo : alvo.email)
+      if (!owner) {
+        return json(
+          {
+            status: 'erro',
+            erro:
+              `Nao encontrei nenhum usuario do HubSpot com o e-mail ` +
+              `${trocouEmail ? emailNovo : alvo.email}. Sem owner, o lead nasceria sem dono.`,
+          },
+          422,
+        )
+      }
+      if (!owner.ativo) {
+        return json(
+          { status: 'erro', erro: `O usuario ${owner.nome} esta arquivado no HubSpot.` },
+          422,
+        )
+      }
+      patch.hubspot_owner_id = owner.id
+      log('owner revinculado', owner)
+    }
+
+    if (trocouEmail) {
+      const { error } = await admin.auth.admin.updateUserById(id, {
+        email: emailNovo,
+        email_confirm: true,
+      })
+      if (error) throw new Error(`Falha ao trocar o e-mail do login: ${error.message}`)
+      patch.email = emailNovo
+      log('e-mail do login trocado', emailNovo)
+    }
+
+    // --- Senha ------------------------------------------------------------
+    if (corpo.senha !== undefined && corpo.senha !== '') {
+      if (corpo.senha.length < SENHA_MINIMA) {
+        return json(
+          { status: 'erro', erro: `A senha precisa de pelo menos ${SENHA_MINIMA} caracteres` },
+          400,
+        )
+      }
+      const { error } = await admin.auth.admin.updateUserById(id, {
+        password: corpo.senha,
+        email_confirm: true,
+      })
+      if (error) throw new Error(`Falha ao trocar a senha: ${error.message}`)
+      log('senha trocada')
+    }
+
+    // --- Grava ------------------------------------------------------------
+    if (Object.keys(patch).length === 0) {
+      return json({ status: 'ok', usuario: alvo, alterou: false })
+    }
+
+    const { data: atualizado, error: erroUpdate } = await admin
+      .from('app_users')
+      .update(patch)
+      .eq('id', id)
+      .select(CAMPOS)
+      .single()
+
+    if (erroUpdate) throw new Error(`Falha ao salvar: ${erroUpdate.message}`)
+
+    log('atualizado', Object.keys(patch))
+    return json({ status: 'ok', usuario: atualizado, alterou: true })
+  } catch (erro) {
+    const mensagem = erro instanceof Error ? erro.message : String(erro)
+    console.error(`[admin-usuarios][${alvo.email}] falhou:`, mensagem)
+    return json({ status: 'erro', erro: mensagem }, 500)
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/** Localiza o uid de uma conta pelo e-mail, paginando o auth. */
+async function contaPorEmail(admin: SupabaseClient, email: string): Promise<string | null> {
+  for (let pagina = 1; pagina <= 10; pagina++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page: pagina, perPage: 200 })
+    if (error) throw new Error(`Falha ao localizar a conta existente: ${error.message}`)
+
+    const achado = data.users.find((u) => (u.email ?? '').toLowerCase() === email)
+    if (achado) return achado.id
+    if (data.users.length < 200) break
+  }
+  return null
+}

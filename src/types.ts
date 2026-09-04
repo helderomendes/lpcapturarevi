@@ -9,6 +9,12 @@ export interface Usuario {
   hubspot_owner_id: string
   papel: Papel
   ativo: boolean
+  /**
+   * Agenda da propria pessoa no HubSpot. Vence o link do evento: a reuniao
+   * marcada no estande cai na agenda de quem conversou com o visitante.
+   * Nulo = usa o link do evento e, na falta dele, o padrao do .env.
+   */
+  link_agendamento: string | null
 }
 
 export interface Evento {
