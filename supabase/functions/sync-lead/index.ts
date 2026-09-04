@@ -82,6 +82,54 @@ function extrairDominio(site?: string | null, email?: string | null): string | n
   return null
 }
 
+/** Host comparavel: tira protocolo, caminho e www. */
+function hostDe(valor?: string | null): string {
+  const limpo = (valor ?? '').trim().toLowerCase()
+  if (!limpo) return ''
+  try {
+    const url = new URL(limpo.startsWith('http') ? limpo : `https://${limpo}`)
+    return url.hostname.replace(/^www\./, '')
+  } catch {
+    return limpo.replace(/^www\./, '')
+  }
+}
+
+/**
+ * Qual das empresas ja associadas ao contato e a desta captura.
+ *
+ * Com dominio em maos, vale a que bate. Sem dominio (e-mail de provedor
+ * pessoal e nenhum site informado), so vale o que e claramente a mesma
+ * empresa: mesmo nome, ou a empresa vazia que o HubSpot acabou de criar para
+ * este contato. Chutar aqui jogaria o negocio na empresa errada — um contato
+ * pode estar ligado a outra empresa de antes, caso tipico do duplicado
+ * resolvido como "criar assim mesmo".
+ */
+function escolherEmpresa(
+  associadas: hs.Registro[],
+  dominio: string | null,
+  nomeEmpresa: string,
+): hs.Registro | undefined {
+  if (associadas.length === 0) return undefined
+
+  if (dominio) {
+    const porDominio = associadas.filter(
+      (e) =>
+        hostDe(e.properties.domain) === dominio || hostDe(e.properties.website) === dominio,
+    )
+    // Havendo mais de uma com o mesmo dominio — o estrago que este codigo
+    // existe para nao repetir —, fica a que tem nome.
+    if (porDominio.length > 0) {
+      return porDominio.find((e) => e.properties.name?.trim()) ?? porDominio[0]
+    }
+  }
+
+  const alvo = nomeEmpresa.trim().toLowerCase()
+  return associadas.find((e) => {
+    const nome = (e.properties.name ?? '').trim().toLowerCase()
+    return (nome && nome === alvo) || (!nome && !e.properties.domain?.trim())
+  })
+}
+
 function separarNome(nomeCompleto: string): { firstname: string; lastname: string } {
   const partes = nomeCompleto.trim().split(/\s+/)
   return {
@@ -428,12 +476,56 @@ Deno.serve(async (req) => {
       const instagram = normalizarInstagram(lead.instagram)
       const propInstagram = config.hubspot.propertyInstagramEmpresa
 
-      let jaExistia: { id: string; properties: Record<string, string | null> } | undefined
-      if (dominio) {
+      // A ordem aqui e o que evita empresa duplicada.
+      //
+      // O portal tem a configuracao "Criar e associar empresas a contatos"
+      // ligada: ela cria uma empresa no instante em que o contato nasce, e
+      // essa empresa vem sem nome e sem dono quando o dominio nao tem
+      // enriquecimento (aparece como "--" na lista). O indice da Search API
+      // leva segundos para enxergar registro novo, entao buscar por dominio
+      // primeiro devolvia vazio e a gente criava uma segunda empresa com o
+      // mesmo dominio, no mesmo cadastro.
+      //
+      // 1. associacoes do contato — leitura direta, sem indice;
+      // 2. busca por dominio — pega empresa que ja existia de antes;
+      // 3. segunda olhada nas associacoes, com pausa curta, porque a
+      //    configuracao do HubSpot demora alguns decimos de segundo para
+      //    materializar a empresa. Custa essa pausa somente no caminho em que
+      //    a empresa seria criada de qualquer forma.
+
+      // Falha aqui nao derruba a captura: no pior caso voltamos ao
+      // comportamento antigo (empresa duplicada), que e problema de higiene do
+      // CRM. Lead preso no aparelho no meio de uma feira e problema de venda.
+      const associadaDoContato = async (esperaMs: number) => {
+        try {
+          if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs))
+          return escolherEmpresa(await hs.empresasDoContato(contactId!), dominio, lead.empresa)
+        } catch (erro) {
+          console.warn(
+            `[sync-lead][${lead.id}] nao consegui ler as empresas do contato ` +
+              `${contactId}: ${erroLegivel(erro)}`,
+          )
+          return undefined
+        }
+      }
+
+      let jaExistia = await associadaDoContato(0)
+      if (jaExistia) log('empresa ja associada ao contato', jaExistia.id)
+
+      if (!jaExistia && dominio) {
         const busca = await hs.buscarEmpresaPorDominio(dominio)
         jaExistia = busca.results[0]
-        companyId = jaExistia?.id ?? null
       }
+
+      // Sem dominio, a configuracao do HubSpot nao tem em que se apoiar (ela
+      // parte do dominio do e-mail e ignora provedor pessoal), entao nao ha
+      // corrida para esperar — e a captura nao paga a pausa.
+      if (!jaExistia && dominio) {
+        jaExistia = await associadaDoContato(700)
+        if (jaExistia) log('empresa criada pelo HubSpot no meio do caminho', jaExistia.id)
+      }
+
+      companyId = jaExistia?.id ?? null
 
       if (!companyId) {
         const propsEmpresa: Record<string, string> = { name: lead.empresa }
@@ -449,13 +541,20 @@ Deno.serve(async (req) => {
         // Empresa que ja existia: completa o que esta vazio e nunca sobrescreve.
         // Site e Instagram de uma loja nao mudam por causa de um lead novo, e
         // apagar o que alguem preencheu a mao seria pior do que nao preencher.
+        //
+        // Nome, dominio e dono entram nessa conta por causa da empresa que a
+        // configuracao do HubSpot cria: ela nasce sem os tres, e empresa sem
+        // nome e sem dono e exatamente o que polui lista e relatorio.
         const completar: Record<string, string> = {}
         const atual = jaExistia!.properties
 
+        if (!atual.name?.trim()) completar.name = lead.empresa
+        if (dominio && !atual.domain?.trim()) completar.domain = dominio
         if (site && !atual.website?.trim()) completar.website = site
         if (instagram && propInstagram && !atual[propInstagram]?.trim()) {
           completar[propInstagram] = instagram
         }
+        if (!atual.hubspot_owner_id?.trim()) completar.hubspot_owner_id = ownerId
 
         if (Object.keys(completar).length > 0) {
           try {
