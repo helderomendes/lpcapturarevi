@@ -131,6 +131,7 @@ Repetir o cadastro com o mesmo e-mail troca a senha — é o caminho para reset.
 - **Revincular ao HubSpot** re-resolve o owner ID pelo e-mail atual. Use quando a pessoa
   ganhou acesso ao HubSpot depois do cadastro, ou trocou de conta lá.
 - **Link de reunião** é a agenda daquela pessoa e vence o link do evento (ver §5).
+  Cada um também configura o próprio, sem admin, em **Minha agenda** na home.
 - Ninguém se tranca fora: o último `admin` ativo não pode ser rebaixado nem desativado,
   e o próprio acesso não tem botão de desativar.
 
@@ -210,6 +211,34 @@ Do mais específico para o mais genérico:
 A pessoa vence o evento porque quem conversou no estande é quem deve receber a reunião.
 Quem não tem agenda própria cadastrada cai na escala da feira.
 
+O link de cada pessoa é editável nos dois lugares: por ela mesma em **Minha agenda**
+(home, sem precisar de admin) e por um admin em **Painel → Equipe**.
+
+### O que o app manda no link, e o que o HubSpot faz com isso
+
+O app acrescenta ao link estes parâmetros, para o visitante não redigitar o que acabou
+de informar no estande:
+
+| Parâmetro | De onde vem |
+| --- | --- |
+| `firstname`, `lastname` | nome do lead |
+| `email`, `phone`, `company` | campos do formulário |
+| `website` | site informado **ou**, em branco, o domínio do e-mail |
+| `jobtitle` | cargo |
+| `utm_source`, `utm_medium`, `utm_campaign` | `captura-eventos`, `evento-presencial`, detalhamento de origem do evento |
+
+**O preenchimento automático só acontece se o campo existir no formulário daquele link
+de reunião.** O HubSpot casa o parâmetro pelo nome interno da property e **ignora em
+silêncio** — sem erro, sem aviso — qualquer parâmetro cujo campo não esteja no
+formulário. Então, se o site (ou o cargo) não aparece preenchido para o visitante,
+o lugar de olhar é o HubSpot: **Reuniões → o link → Formulário**, e adicionar o campo
+*Website URL* (`website`) / *Cargo* (`jobtitle`). Não é o app que deixou de mandar.
+
+O `website` sai preenchido mesmo quando o BDR não digita o site: na falta dele, o app
+usa o domínio do e-mail comercial — o mesmo caminho que a Edge Function usa para achar
+a empresa no HubSpot. Provedor pessoal (`@gmail.com` e companhia) fica de fora, porque
+não é o site de ninguém.
+
 ---
 
 ## 6. Edge Function `sync-lead`
@@ -223,7 +252,11 @@ supabase secrets set --env-file supabase/.env.local
 ```
 
 Há duas funções: `sync-lead`, que materializa o lead no HubSpot, e `admin-usuarios`, que
-cria e edita acessos (`acao: 'criar' | 'atualizar'`) e resolve o owner ID pelo e-mail. As duas validam a sessão do Supabase antes
+cria e edita acessos (`acao: 'criar' | 'atualizar' | 'meu_link'`) e resolve o owner ID
+pelo e-mail. Só `meu_link` dispensa `papel = 'admin'`: ela grava **uma** coluna
+(`link_agendamento`) e **só** na linha de quem chamou — o id vem do JWT, nunca do corpo
+da requisição, então não há como editar a agenda de outra pessoa nem tocar em `papel`
+por essa porta. As duas validam a sessão do Supabase antes
 de agir, e `admin-usuarios` recusa quem não é `admin`. Cada função carrega as próprias
 dependências em `lib/`, para o deploy ser autocontido.
 
@@ -440,6 +473,10 @@ app shell — é o que permite abrir offline em cold start.
   aparece na fila.
 - **Fila** — pendentes e erros, com *Sincronizar agora*, mensagem de erro legível por
   lead, botão de reenviar e o aviso de conflito de duplicata com as duas opções.
+- **Minha agenda** — para todos. Cada um cola o próprio link de reunião e vê, na
+  hora, qual link o app usaria naquele aparelho: a sua agenda, o link do evento ou o
+  revezamento padrão. Lê o valor do servidor ao abrir, para não salvar em cima de um
+  cache velho.
 - **Painel** — só para `admin`, escondido para os demais. Três abas:
   - **Equipe** — cria acessos (com o vínculo ao HubSpot resolvido pelo e-mail) e edita
     os existentes: nome, e-mail, papel, link de reunião, senha, desativar/reativar e

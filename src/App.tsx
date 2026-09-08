@@ -10,6 +10,7 @@ import { Fila } from '@/pages/Fila'
 import { Home } from '@/pages/Home'
 import { Login } from '@/pages/Login'
 import { Painel } from '@/pages/Painel'
+import { Perfil } from '@/pages/Perfil'
 import { PosSalvamento } from '@/pages/PosSalvamento'
 import type { ReactNode } from 'react'
 
@@ -73,6 +74,14 @@ function Rotas() {
         element={
           <Protegida>
             <Fila />
+          </Protegida>
+        }
+      />
+      <Route
+        path="/perfil"
+        element={
+          <Protegida>
+            <Perfil />
           </Protegida>
         }
       />
