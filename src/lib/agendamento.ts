@@ -27,6 +27,41 @@ function normalizarSite(site?: string | null): string | null {
 }
 
 /**
+ * Mesma lista que a Edge Function usa para nao criar uma empresa chamada
+ * "gmail.com". Duplicada de proposito: o backend roda no Deno e nao importa de
+ * `src/`, e uma lista de 19 dominios e mais barata de repetir do que de
+ * compartilhar.
+ */
+const PROVEDORES_PESSOAIS = new Set([
+  'gmail.com', 'hotmail.com', 'outlook.com', 'outlook.com.br', 'yahoo.com',
+  'yahoo.com.br', 'icloud.com', 'live.com', 'bol.com.br', 'uol.com.br',
+  'terra.com.br', 'globo.com', 'me.com', 'msn.com', 'protonmail.com',
+  'proton.me', 'aol.com', 'zipmail.com.br', 'ig.com.br',
+])
+
+/**
+ * Site da loja: o que o BDR digitou; na falta, o dominio do e-mail.
+ *
+ * O campo Site e o mais deixado em branco no estande — no meio da conversa,
+ * ninguem para para perguntar a URL de quem acabou de dar o e-mail comercial.
+ * E o e-mail comercial JA carrega o dominio, que e o mesmo caminho que a Edge
+ * Function usa para achar a empresa no HubSpot. Sem isso, o formulario de
+ * reuniao abria com o campo de site vazio tendo o dado na mao.
+ *
+ * Provedor pessoal fica de fora: `@gmail.com` nao e o site de ninguem.
+ */
+function siteProvavel(dados: DadosAgendamento): string | null {
+  const informado = normalizarSite(dados.site)
+  if (informado) return informado
+
+  const dominio = (dados.email ?? '').split('@')[1]?.toLowerCase().trim()
+  if (dominio && dominio.includes('.') && !PROVEDORES_PESSOAIS.has(dominio)) {
+    return `https://${dominio}`
+  }
+  return null
+}
+
+/**
  * Do mais especifico para o mais generico:
  *   1. agenda de quem captou   (`app_users.link_agendamento`)
  *   2. escala da feira         (`eventos.link_agendamento`)
@@ -68,9 +103,10 @@ export function montarLinkAgendamento(
   url.searchParams.set('phone', dados.telefone.trim())
 
   // O HubSpot preenche um campo do formulario de reuniao pelo nome interno da
-  // property. Se o formulario nao tiver o campo, o parametro e simplesmente
-  // ignorado — entao mandar nao custa nada, e faltar custa o visitante digitar.
-  const site = normalizarSite(dados.site)
+  // property (`website`, `jobtitle`). Se o formulario daquele link NAO tiver o
+  // campo, o parametro e simplesmente ignorado pelo HubSpot — sem erro e sem
+  // aviso. Mandar nao custa nada; faltar custa o visitante digitar.
+  const site = siteProvavel(dados)
   if (site) url.searchParams.set('website', site)
   if (dados.cargo?.trim()) url.searchParams.set('jobtitle', dados.cargo.trim())
 

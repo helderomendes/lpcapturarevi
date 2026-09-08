@@ -6,13 +6,20 @@
 // Supabase + SQL" que e onde o login quebra silenciosamente: conta criada sem
 // vinculo entra com a senha certa e e deslogada na hora.
 //
-// Duas acoes:
-//   `criar`     (default) — conta no auth + vinculo em app_users.
+// Tres acoes:
+//   `criar`     (default) — conta no auth + vinculo em app_users. Admin.
 //   `atualizar`           — nome, e-mail, papel, link de reuniao, senha e ativo
-//                           de quem ja existe.
+//                           de quem ja existe. Admin.
+//   `meu_link`            — a propria agenda, por qualquer usuario ativo. Nao
+//                           precisa de admin: e o unico caminho de escrita que
+//                           cada um tem sobre o proprio registro, e escreve uma
+//                           coluna so.
 //
 // Garantias:
-//  - Somente `papel = 'admin'` pode chamar. Sem isso, 403.
+//  - `criar` e `atualizar` exigem `papel = 'admin'`. Sem isso, 403.
+//  - `meu_link` grava SOMENTE `link_agendamento` e SOMENTE na linha de quem
+//    chamou — o id vem do JWT, nunca do corpo da requisicao. Nao ha como
+//    editar o link de outra pessoa nem tocar em papel por essa porta.
 //  - Sem owner ativo no HubSpot para aquele e-mail, nada e criado nem
 //    revinculado: melhor recusar do que deixar lead nascer sem dono.
 //  - `app_users` nao tem policy de escrita e nao vai ter: todo update de
@@ -27,7 +34,7 @@ import { corsHeaders, json } from './lib/cors.ts'
 import { ownerPorEmail } from './lib/owners.ts'
 
 type Papel = 'bdr' | 'closer' | 'admin'
-type Acao = 'criar' | 'atualizar'
+type Acao = 'criar' | 'atualizar' | 'meu_link'
 
 interface Corpo {
   acao?: Acao
@@ -103,9 +110,10 @@ Deno.serve(async (req) => {
     console.error('[admin-usuarios] falha ao ler app_users', erroSolicitante.message)
     return json({ status: 'erro', erro: 'Falha ao verificar permissao' }, 500)
   }
-  if (!solicitante?.ativo || solicitante.papel !== 'admin') {
-    return json({ status: 'erro', erro: 'Somente admin pode gerenciar acessos' }, 403)
+  if (!solicitante) {
+    return json({ status: 'erro', erro: 'Usuario sem cadastro em app_users' }, 403)
   }
+  if (!solicitante.ativo) return json({ status: 'erro', erro: 'Usuario inativo' }, 403)
 
   // --- 2. Entrada -----------------------------------------------------------
   let corpo: Corpo
@@ -115,12 +123,62 @@ Deno.serve(async (req) => {
     return json({ status: 'erro', erro: 'JSON invalido' }, 400)
   }
 
+  // A propria agenda vem antes da barreira de admin: cada um cuida da sua.
+  if (corpo.acao === 'meu_link') {
+    return await meuLink(admin, corpo, auth.user.id)
+  }
+
+  if (solicitante.papel !== 'admin') {
+    return json({ status: 'erro', erro: 'Somente admin pode gerenciar acessos' }, 403)
+  }
+
   if (corpo.acao === 'atualizar') {
     return await atualizar(admin, corpo, auth.user.id)
   }
 
   return await criar(admin, corpo)
 })
+
+// ---------------------------------------------------------------------------
+// meu_link
+// ---------------------------------------------------------------------------
+
+/**
+ * A agenda de quem chamou. Duas escolhas que sustentam a seguranca disso:
+ *
+ *  - o id vem do JWT (`solicitanteId`), nao do corpo: nao existe requisicao
+ *    capaz de apontar para outra pessoa;
+ *  - o update carrega uma coluna e ponto. `papel` e `ativo` nao passam por
+ *    aqui, entao nao ha caminho de escalonamento de privilegio.
+ */
+async function meuLink(
+  admin: SupabaseClient,
+  corpo: Corpo,
+  solicitanteId: string,
+): Promise<Response> {
+  const link = (corpo.link_agendamento ?? '').trim()
+  if (link && !linkValido(link)) {
+    return json(
+      { status: 'erro', erro: 'O link de reuniao precisa ser uma URL http(s) completa' },
+      400,
+    )
+  }
+
+  const { data, error } = await admin
+    .from('app_users')
+    .update({ link_agendamento: link || null })
+    .eq('id', solicitanteId)
+    .select(CAMPOS)
+    .single()
+
+  if (error) {
+    console.error('[admin-usuarios] falha ao salvar o proprio link', error.message)
+    return json({ status: 'erro', erro: `Falha ao salvar: ${error.message}` }, 500)
+  }
+
+  console.log(`[admin-usuarios][${data.email}] proprio link ${link ? 'salvo' : 'removido'}`)
+  return json({ status: 'ok', usuario: data, alterou: true })
+}
 
 // ---------------------------------------------------------------------------
 // criar

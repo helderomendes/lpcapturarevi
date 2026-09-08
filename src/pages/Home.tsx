@@ -143,6 +143,29 @@ export function Home() {
           )}
         </section>
 
+        {/* Minha agenda vale para todos: o link de reunião é de cada um. */}
+        <Link to="/perfil" className="block">
+          <Card className="flex items-center gap-3 transition hover:bg-white/[0.07]">
+            <div className="flex-1">
+              <p className="text-sm font-semibold">Minha agenda</p>
+              <p className="text-xs text-white/45">
+                {usuario?.link_agendamento
+                  ? 'Link de reunião próprio configurado'
+                  : 'Usando o link do evento — configure o seu'}
+              </p>
+            </div>
+            <svg viewBox="0 0 24 24" className="h-5 w-5 text-white/35" fill="none" aria-hidden>
+              <path
+                d="M9 5l7 7-7 7"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </Card>
+        </Link>
+
         {/* Painel só aparece para admin — o BDR no estande não precisa dele. */}
         {usuario?.papel === 'admin' && (
           <Link to="/painel" className="block">

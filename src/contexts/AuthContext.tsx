@@ -21,6 +21,12 @@ interface AuthContexto {
   sessaoExpirada: boolean
   entrar: (email: string, senha: string) => Promise<void>
   sair: () => Promise<void>
+  /**
+   * Reflete no app um perfil que acabou de ser salvo no servidor, sem esperar
+   * o proximo login. Grava no cache tambem: o proximo cold start offline
+   * precisa ver o mesmo link de agendamento.
+   */
+  atualizarPerfil: (perfil: Usuario) => Promise<void>
 }
 
 const Contexto = createContext<AuthContexto | null>(null)
@@ -141,9 +147,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessaoExpirada(false)
   }, [])
 
+  const atualizarPerfil = useCallback(async (perfil: Usuario) => {
+    await usuarioCache.gravar(perfil)
+    setUsuario(perfil)
+  }, [])
+
   const valor = useMemo<AuthContexto>(
-    () => ({ usuario, carregando, sessaoExpirada, entrar, sair }),
-    [usuario, carregando, sessaoExpirada, entrar, sair],
+    () => ({ usuario, carregando, sessaoExpirada, entrar, sair, atualizarPerfil }),
+    [usuario, carregando, sessaoExpirada, entrar, sair, atualizarPerfil],
   )
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>

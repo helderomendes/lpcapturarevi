@@ -1,9 +1,14 @@
 // =============================================================================
 // Operacoes do painel de admin.
 //
-// Tudo aqui exige rede e papel `admin`. Diferente da captura, que e offline por
-// principio, o painel e trabalho de escritorio: falhar com mensagem clara e
-// melhor do que fingir que salvou.
+// Tudo aqui exige rede. Diferente da captura, que e offline por principio, o
+// painel e trabalho de escritorio: falhar com mensagem clara e melhor do que
+// fingir que salvou.
+//
+// A excecao ao "papel admin" e `salvarMeuLinkAgendamento`, que qualquer usuario
+// chama para a propria agenda. Vive aqui porque usa a mesma Edge Function e a
+// mesma plumbing de sessao — duplicar isso em outro arquivo renderia duas
+// copias do mesmo fetch.
 // =============================================================================
 
 import { supabase, urlEdgeFunction } from '@/lib/supabase'
@@ -139,6 +144,45 @@ export async function atualizarUsuario(dados: EdicaoUsuario): Promise<Usuario> {
 
 export function alternarUsuarioAtivo(id: string, ativo: boolean): Promise<Usuario> {
   return atualizarUsuario({ id, ativo })
+}
+
+// ---------------------------------------------------------------------------
+// A propria agenda (qualquer usuario, sem papel admin)
+// ---------------------------------------------------------------------------
+
+/**
+ * Salva o link de reuniao de quem esta logado. String vazia limpa o link e
+ * devolve a pessoa para o link do evento.
+ *
+ * Quem e "quem esta logado" e decidido no servidor, pelo JWT — o id nao viaja
+ * no corpo. Nao ha requisicao capaz de editar a agenda de outra pessoa.
+ */
+/**
+ * O proprio registro, direto do servidor.
+ *
+ * A tela nao pode partir do cache: um cache gravado antes desta coluna existir
+ * traria `link_agendamento` vazio, e salvar com o campo em branco APAGARIA o
+ * link que esta no banco. A policy de leitura de `app_users` ja permite que
+ * cada um leia a propria linha.
+ */
+export async function lerMeuPerfil(id: string): Promise<Usuario> {
+  const { data, error } = await supabase
+    .from('app_users')
+    .select(CAMPOS_USUARIO)
+    .eq('id', id)
+    .abortSignal(prazo())
+    .single()
+
+  if (error) throw new Error(traduzir(error.message))
+  return data as Usuario
+}
+
+export async function salvarMeuLinkAgendamento(link: string): Promise<Usuario> {
+  const resultado = await chamarAdminUsuarios<{ usuario: Usuario }>({
+    acao: 'meu_link',
+    link_agendamento: link,
+  })
+  return resultado.usuario
 }
 
 // ---------------------------------------------------------------------------
