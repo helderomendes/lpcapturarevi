@@ -368,18 +368,25 @@ app shell — é o que permite abrir offline em cold start.
 - **Home** — usuário e evento no header, seletor de evento, botão grande *Novo lead*,
   contador de capturados hoje, indicador de sincronização (sempre visível) e a lista dos
   últimos leads, tocáveis para editar ou reenviar.
-- **Captura** — dois modos:
-  - **Eu preencho (BDR)**: os 4 obrigatórios + cargo, site, Instagram, plataforma de
-    e-commerce e observações.
-  - **Entregar o tablet (cliente)**: só os campos do visitante + consentimento LGPD
-    obrigatório. Nenhum campo interno visível. Ao concluir, tela de "Obrigado" e volta
-    automática a um formulário em branco em 5s. Sair do modo cliente exige **segurar** o
-    botão, para o visitante não voltar ao app com um toque acidental.
-  Os dois modos terminam com **dois botões**: *Salvar lead* e *Agendar reunião*. O
-  segundo salva e já abre o link round-robin do HubSpot em nova aba, com `firstname`,
-  `lastname`, `email`, `company` e `phone` preenchidos a partir do que a pessoa acabou
-  de digitar, mais `utm_source`/`utm_medium`/`utm_campaign` para a reunião ficar
-  rastreável até o evento. O visitante só escolhe o horário.
+- **Captura** — em **duas etapas**, para o lead nunca depender de chegar ao fim do
+  formulário para ser capturado:
+  - **Etapa 1 (Contato)**: nome e sobrenome, WhatsApp, e-mail, nome da empresa e site.
+    Botões *Próxima etapa* e *Registrar lead* — este já salva só com o essencial.
+  - **Etapa 2 (Complemento)**: plataforma de e-commerce, observações, cargo e Instagram.
+    Botões *Agendar reunião* e *Registrar lead*.
+  E dois modos:
+  - **Eu preencho (BDR)**: todos os campos acima.
+  - **Entregar o tablet (cliente)**: plataforma e observações (internos) ficam ocultos, e o
+    aviso de LGPD aparece em texto. Ao concluir, tela de "Obrigado" e volta automática a um
+    formulário em branco em 5s. Sair do modo cliente exige **segurar** o botão, para o
+    visitante não voltar ao app com um toque acidental.
+  *Agendar reunião* salva e já abre o link round-robin do HubSpot em nova aba com os dados
+  pré-preenchidos: `firstName`/`lastName`, `email`, `company`, `website` (e `site`),
+  `jobtitle` e o WhatsApp em formato internacional (`+55…`) em `phone`, `mobilephone`,
+  `hs_whatsapp_phone_number` e `nmero_do_whatsapp`, mais `utm_source`/`utm_medium`/
+  `utm_campaign`. O HubSpot só pré-preenche campos que **existem no formulário da
+  reunião** — se um dado não aparecer, inclua o campo em *Reuniões > editar link >
+  Formulário*. O visitante só escolhe o horário.
 - **Pós-salvamento** — confirma o lead e pergunta se saiu reunião, gravando
   `agendou_reuniao`. Abrir o link nunca marca sozinho: como esse campo segmenta as
   trilhas pós-evento, quem confirma é o BDR. Para leads do modo cliente, a pergunta

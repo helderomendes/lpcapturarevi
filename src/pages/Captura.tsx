@@ -26,6 +26,7 @@ import type { Lead } from '@/types'
 
 type Modo = 'bdr' | 'cliente'
 type Acao = 'salvar' | 'agendar'
+type Etapa = 1 | 2
 
 interface Formulario {
   nome: string
@@ -63,6 +64,7 @@ export function Captura() {
   const [form, setForm] = useState<Formulario>(FORM_VAZIO)
   const [erros, setErros] = useState<ErrosCampo>({})
   const [modo, setModo] = useState<Modo>('bdr')
+  const [etapa, setEtapa] = useState<Etapa>(1)
   const [salvando, setSalvando] = useState(false)
   const [obrigado, setObrigado] = useState(false)
   const [leadOriginal, setLeadOriginal] = useState<Lead | null>(null)
@@ -107,19 +109,34 @@ export function Captura() {
   const opcoesPlataforma = useMemo(() => [...PLATAFORMAS_ECOMMERCE, 'Outra'], [])
   const temLinkAgendamento = Boolean(baseDoAgendamento(evento))
 
-  const salvar = async (e: FormEvent | null, acao: Acao) => {
-    e?.preventDefault()
-    if (!usuario || !evento) return
-
+  /**
+   * Os obrigatorios estao todos na etapa 1. Se faltar algo, volta para ela:
+   * erro apontando para um campo que nao esta na tela nao ajuda ninguem.
+   */
+  const validar = (): boolean => {
     const novosErros = validarObrigatorios(form)
     setErros(novosErros)
-    if (temErro(novosErros)) {
+    if (!temErro(novosErros)) return true
+    setEtapa(1)
+    window.setTimeout(() => {
       document.querySelector('[aria-invalid="true"]')?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       })
-      return
-    }
+    }, 0)
+    return false
+  }
+
+  const irParaEtapa = (proxima: Etapa) => {
+    if (proxima === 2 && !validar()) return
+    setEtapa(proxima)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const salvar = async (e: FormEvent | null, acao: Acao) => {
+    e?.preventDefault()
+    if (!usuario || !evento) return
+    if (!validar()) return
 
     // A aba do HubSpot precisa abrir AINDA dentro do gesto de toque, antes de
     // qualquer await — senao o navegador trata como popup e bloqueia.
@@ -217,6 +234,7 @@ export function Captura() {
         aoTerminar={() => {
           setForm(FORM_VAZIO)
           setErros({})
+          setEtapa(1)
           setObrigado(false)
         }}
       />
@@ -251,117 +269,133 @@ export function Captura() {
           </Card>
         )}
 
-        <form onSubmit={(e) => void salvar(e, 'salvar')} className="space-y-4" noValidate>
-          <Card className="space-y-4">
-            <Campo
-              id="nome"
-              rotulo="Nome"
-              obrigatorio
-              autoComplete="name"
-              autoCapitalize="words"
-              value={form.nome}
-              erro={erros.nome}
-              onChange={(e) => definir('nome', e.target.value)}
-            />
-            <Campo
-              id="telefone"
-              rotulo="Telefone"
-              obrigatorio
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="(47) 99999-9999"
-              value={form.telefone}
-              erro={erros.telefone}
-              onChange={(e) => definir('telefone', mascararTelefone(e.target.value))}
-            />
-            <Campo
-              id="email"
-              rotulo="E-mail"
-              obrigatorio
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              autoCapitalize="none"
-              spellCheck={false}
-              value={form.email}
-              erro={erros.email}
-              onChange={(e) => definir('email', e.target.value)}
-            />
-            <Campo
-              id="empresa"
-              rotulo="Empresa"
-              obrigatorio
-              autoComplete="organization"
-              autoCapitalize="words"
-              value={form.empresa}
-              erro={erros.empresa}
-              onChange={(e) => definir('empresa', e.target.value)}
-            />
-            <Campo
-              id="cargo"
-              rotulo="Cargo"
-              autoComplete="organization-title"
-              value={form.cargo}
-              onChange={(e) => definir('cargo', e.target.value)}
-            />
-            <Campo
-              id="site"
-              rotulo="Site"
-              type="url"
-              inputMode="url"
-              autoCapitalize="none"
-              spellCheck={false}
-              placeholder="loja.com.br"
-              value={form.site}
-              onChange={(e) => definir('site', e.target.value)}
-            />
-            <Campo
-              id="instagram"
-              rotulo="Instagram"
-              autoCapitalize="none"
-              spellCheck={false}
-              placeholder="@loja"
-              value={form.instagram}
-              onChange={(e) => definir('instagram', e.target.value)}
-            />
-          </Card>
+        {/* Duas etapas: a primeira tem so o essencial para o lead existir no
+            HubSpot, e ja pode ser registrada ali. A segunda complementa — se o
+            visitante tiver pressa, nada do que importa se perde. */}
+        <IndicadorEtapa etapa={etapa} />
 
-          {/* ------------------------------------------------------------- */}
-          {/* Campos internos: invisiveis quando o tablet esta com o visitante */}
-          {/* ------------------------------------------------------------- */}
-          {modo === 'bdr' && (
-            <Card className="space-y-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-white/40">
-                Complemento do BDR
-              </p>
-
-              <CampoSelect
-                id="plataforma"
-                rotulo="Plataforma de e-commerce"
-                opcoes={opcoesPlataforma}
-                value={form.plataforma}
-                onChange={(e) => definir('plataforma', e.target.value)}
+        {/* Enter na etapa 1 avanca; na etapa 2, registra. */}
+        <form
+          onSubmit={(e) => {
+            if (etapa === 1) {
+              e.preventDefault()
+              irParaEtapa(2)
+            } else {
+              void salvar(e, 'salvar')
+            }
+          }}
+          className="space-y-4"
+          noValidate
+        >
+          {etapa === 1 ? (
+            <Card className="space-y-4">
+              <Campo
+                id="nome"
+                rotulo="Nome e sobrenome"
+                obrigatorio
+                autoComplete="name"
+                autoCapitalize="words"
+                value={form.nome}
+                erro={erros.nome}
+                onChange={(e) => definir('nome', e.target.value)}
               />
-              {form.plataforma === 'Outra' && (
-                <Campo
-                  id="plataformaOutra"
-                  rotulo="Qual plataforma?"
-                  value={form.plataformaOutra}
-                  onChange={(e) => definir('plataformaOutra', e.target.value)}
-                />
+              <Campo
+                id="telefone"
+                rotulo="WhatsApp"
+                obrigatorio
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="(47) 99999-9999"
+                value={form.telefone}
+                erro={erros.telefone}
+                onChange={(e) => definir('telefone', mascararTelefone(e.target.value))}
+              />
+              <Campo
+                id="email"
+                rotulo="E-mail"
+                obrigatorio
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={form.email}
+                erro={erros.email}
+                onChange={(e) => definir('email', e.target.value)}
+              />
+              <Campo
+                id="empresa"
+                rotulo="Nome da empresa"
+                obrigatorio
+                autoComplete="organization"
+                autoCapitalize="words"
+                value={form.empresa}
+                erro={erros.empresa}
+                onChange={(e) => definir('empresa', e.target.value)}
+              />
+              <Campo
+                id="site"
+                rotulo="Site"
+                type="url"
+                inputMode="url"
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder="loja.com.br"
+                value={form.site}
+                onChange={(e) => definir('site', e.target.value)}
+              />
+            </Card>
+          ) : (
+            <Card className="space-y-5">
+              {/* Plataforma e observacoes sao internos: somem quando o tablet
+                  esta com o visitante. */}
+              {modo === 'bdr' && (
+                <>
+                  <CampoSelect
+                    id="plataforma"
+                    rotulo="Plataforma de e-commerce"
+                    opcoes={opcoesPlataforma}
+                    value={form.plataforma}
+                    onChange={(e) => definir('plataforma', e.target.value)}
+                  />
+                  {form.plataforma === 'Outra' && (
+                    <Campo
+                      id="plataformaOutra"
+                      rotulo="Qual plataforma?"
+                      value={form.plataformaOutra}
+                      onChange={(e) => definir('plataformaOutra', e.target.value)}
+                    />
+                  )}
+
+                  <CampoTexto
+                    id="observacoes"
+                    rotulo="Observações"
+                    rows={6}
+                    placeholder="O que ele falou, dor principal, objeção, quem decide."
+                    dica="É isso que faz o closer chegar preparado na reunião."
+                    value={form.observacoes}
+                    onChange={(e) => definir('observacoes', e.target.value)}
+                  />
+                </>
               )}
 
-              <CampoTexto
-                id="observacoes"
-                rotulo="Observações"
-                rows={6}
-                placeholder="O que ele falou, dor principal, objeção, quem decide."
-                dica="É isso que faz o closer chegar preparado na reunião."
-                value={form.observacoes}
-                onChange={(e) => definir('observacoes', e.target.value)}
+              <Campo
+                id="cargo"
+                rotulo="Cargo"
+                autoComplete="organization-title"
+                value={form.cargo}
+                onChange={(e) => definir('cargo', e.target.value)}
               />
-
+              <Campo
+                id="instagram"
+                rotulo="Instagram"
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder="@loja"
+                value={form.instagram}
+                onChange={(e) => definir('instagram', e.target.value)}
+              />
             </Card>
           )}
 
@@ -372,35 +406,99 @@ export function Captura() {
             <p className="px-1 text-[13px] leading-relaxed text-white/45">{TEXTO_LGPD}</p>
           )}
 
-          {/* Duas saidas, lado a lado: salvar e seguir, ou salvar ja abrindo o
-              agendamento com os dados que a pessoa acabou de preencher. */}
+          {/* Registrar existe nas duas etapas: o lead nunca depende de chegar
+              ao fim do formulario para ser capturado. */}
           <div className="space-y-3">
-            <Botao
-              type="submit"
-              larguraTotal
-              carregando={salvando}
-              className="!min-h-[64px] !text-lg"
-            >
-              {editando ? 'Salvar alterações' : 'Salvar lead'}
-            </Botao>
-
-            {temLinkAgendamento && (
-              <Botao
-                type="button"
-                variante="secundario"
-                larguraTotal
-                disabled={salvando}
-                className="!min-h-[64px] !text-lg"
-                onClick={() => void salvar(null, 'agendar')}
-              >
-                Agendar reunião
-              </Botao>
+            {etapa === 1 ? (
+              <>
+                <Botao
+                  type="button"
+                  larguraTotal
+                  disabled={salvando}
+                  className="!min-h-[64px] !text-lg"
+                  onClick={() => irParaEtapa(2)}
+                >
+                  Próxima etapa
+                </Botao>
+                <Botao
+                  type="button"
+                  variante="secundario"
+                  larguraTotal
+                  carregando={salvando}
+                  className="!min-h-[64px] !text-lg"
+                  onClick={() => void salvar(null, 'salvar')}
+                >
+                  {editando ? 'Salvar alterações' : 'Registrar lead'}
+                </Botao>
+              </>
+            ) : (
+              <>
+                {temLinkAgendamento && (
+                  <Botao
+                    type="button"
+                    larguraTotal
+                    disabled={salvando}
+                    className="!min-h-[64px] !text-lg"
+                    onClick={() => void salvar(null, 'agendar')}
+                  >
+                    Agendar reunião
+                  </Botao>
+                )}
+                <Botao
+                  type="submit"
+                  variante={temLinkAgendamento ? 'secundario' : 'primario'}
+                  larguraTotal
+                  carregando={salvando}
+                  className="!min-h-[64px] !text-lg"
+                >
+                  {editando ? 'Salvar alterações' : 'Registrar lead'}
+                </Botao>
+                <Botao
+                  type="button"
+                  variante="fantasma"
+                  larguraTotal
+                  disabled={salvando}
+                  onClick={() => irParaEtapa(1)}
+                >
+                  Voltar para a etapa 1
+                </Botao>
+              </>
             )}
           </div>
         </form>
 
         {modo === 'cliente' && <SairDoModoCliente aoSair={() => setModo('bdr')} />}
       </main>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Indicador de etapa
+// ---------------------------------------------------------------------------
+
+const NOMES_ETAPA: Record<Etapa, string> = {
+  1: 'Contato',
+  2: 'Complemento',
+}
+
+function IndicadorEtapa({ etapa }: { etapa: Etapa }) {
+  return (
+    <div className="space-y-2 px-1" aria-live="polite">
+      <div className="flex items-baseline justify-between text-sm">
+        <span className="font-semibold text-white">{NOMES_ETAPA[etapa]}</span>
+        <span className="text-white/40">Etapa {etapa} de 2</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2" aria-hidden>
+        {([1, 2] as const).map((n) => (
+          <span
+            key={n}
+            className={`h-1.5 rounded-full transition-colors ${
+              n <= etapa ? 'bg-revi-400' : 'bg-white/10'
+            }`}
+          />
+        ))}
+      </div>
     </div>
   )
 }
