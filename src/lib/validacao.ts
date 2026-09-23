@@ -66,8 +66,8 @@ export function validarObrigatorios(valores: CamposObrigatorios): ErrosCampo {
   if (!valores.nome.trim()) erros.nome = 'Informe o nome'
   else if (valores.nome.trim().length < 2) erros.nome = 'Nome muito curto'
 
-  if (!valores.telefone.trim()) erros.telefone = 'Informe o telefone'
-  else if (!telefoneValido(valores.telefone)) erros.telefone = 'Telefone inválido'
+  if (!valores.telefone.trim()) erros.telefone = 'Informe o WhatsApp'
+  else if (!telefoneValido(valores.telefone)) erros.telefone = 'WhatsApp inválido'
 
   if (!valores.email.trim()) erros.email = 'Informe o e-mail'
   else if (!emailValido(valores.email)) erros.email = 'E-mail inválido'
