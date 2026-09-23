@@ -457,8 +457,12 @@ app shell — é o que permite abrir offline em cold start.
   últimos leads, tocáveis para editar ou reenviar.
 - **Captura** — em **duas etapas**, para o lead nunca depender de chegar ao fim do
   formulário para ser capturado:
-  - **Etapa 1 (Contato)**: nome e sobrenome, WhatsApp, e-mail, nome da empresa e site.
+  - **Etapa 1 (Contato)**: nome e sobrenome, WhatsApp, e-mail e site.
     Botões *Próxima etapa* e *Registrar lead* — este já salva só com o essencial.
+    Não há campo de empresa: o nome sai do site (`loja-da-maria.com.br` → "Loja Da
+    Maria"; `marca.myshopify.com` → "Marca") ou, sem site, do domínio do e-mail
+    comercial. O site só é obrigatório quando o e-mail é pessoal (gmail, hotmail…).
+    Empresa que já existe no HubSpot com aquele domínio mantém o nome que tem lá.
   - **Etapa 2 (Complemento)**: plataforma de e-commerce, observações, cargo e Instagram.
     Botões *Agendar reunião* e *Registrar lead*.
   E dois modos:

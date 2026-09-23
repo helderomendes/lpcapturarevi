@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { LINK_AGENDAMENTO_PADRAO } from '@/config/app'
+import { dominioDoEmail } from '@/lib/empresa'
 import type { Evento, Usuario } from '@/types'
 
 export interface DadosAgendamento {
@@ -37,19 +38,6 @@ function telefoneInternacional(telefone: string): string | null {
 }
 
 /**
- * Mesma lista que a Edge Function usa para nao criar uma empresa chamada
- * "gmail.com". Duplicada de proposito: o backend roda no Deno e nao importa de
- * `src/`, e uma lista de 19 dominios e mais barata de repetir do que de
- * compartilhar.
- */
-const PROVEDORES_PESSOAIS = new Set([
-  'gmail.com', 'hotmail.com', 'outlook.com', 'outlook.com.br', 'yahoo.com',
-  'yahoo.com.br', 'icloud.com', 'live.com', 'bol.com.br', 'uol.com.br',
-  'terra.com.br', 'globo.com', 'me.com', 'msn.com', 'protonmail.com',
-  'proton.me', 'aol.com', 'zipmail.com.br', 'ig.com.br',
-])
-
-/**
  * Site da loja: o que o BDR digitou; na falta, o dominio do e-mail.
  *
  * O campo Site e o mais deixado em branco no estande — no meio da conversa,
@@ -64,11 +52,8 @@ function siteProvavel(dados: DadosAgendamento): string | null {
   const informado = normalizarSite(dados.site)
   if (informado) return informado
 
-  const dominio = (dados.email ?? '').split('@')[1]?.toLowerCase().trim()
-  if (dominio && dominio.includes('.') && !PROVEDORES_PESSOAIS.has(dominio)) {
-    return `https://${dominio}`
-  }
-  return null
+  const dominio = dominioDoEmail(dados.email)
+  return dominio ? `https://${dominio}` : null
 }
 
 /**

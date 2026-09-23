@@ -2,6 +2,8 @@
 // Validacao e formatacao. Erros sempre inline na UI — nunca alert().
 // =============================================================================
 
+import { dominioDoEmail, dominioDoSite } from '@/lib/empresa'
+
 /** UUID v4 gerado no dispositivo. Serve de chave de idempotencia no backend. */
 export function novoId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -56,10 +58,14 @@ interface CamposObrigatorios {
   nome: string
   telefone: string
   email: string
-  empresa: string
+  site: string
 }
 
-/** Nome, telefone, e-mail e empresa sao obrigatorios. O resto e complemento. */
+/**
+ * Nome, WhatsApp e e-mail sao obrigatorios. O site tambem, porque e dele que
+ * sai a empresa — a nao ser que o e-mail seja comercial, caso em que o dominio
+ * do e-mail ja resolve. O resto e complemento.
+ */
 export function validarObrigatorios(valores: CamposObrigatorios): ErrosCampo {
   const erros: ErrosCampo = {}
 
@@ -72,7 +78,11 @@ export function validarObrigatorios(valores: CamposObrigatorios): ErrosCampo {
   if (!valores.email.trim()) erros.email = 'Informe o e-mail'
   else if (!emailValido(valores.email)) erros.email = 'E-mail inválido'
 
-  if (!valores.empresa.trim()) erros.empresa = 'Informe a empresa'
+  if (valores.site.trim()) {
+    if (!dominioDoSite(valores.site)) erros.site = 'Site inválido'
+  } else if (!dominioDoEmail(valores.email)) {
+    erros.site = 'Informe o site da loja'
+  }
 
   return erros
 }

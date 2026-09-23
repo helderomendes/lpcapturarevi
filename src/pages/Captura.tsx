@@ -13,6 +13,7 @@ import {
 import { useApp } from '@/contexts/AppContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { baseDoAgendamento, montarLinkAgendamento } from '@/lib/agendamento'
+import { dominioDaEmpresa, dominioDoEmail, dominioDoSite, nomeDaEmpresa } from '@/lib/empresa'
 import { obterLead, salvarLead } from '@/lib/db'
 import { sincronizar } from '@/lib/sync'
 import {
@@ -32,7 +33,6 @@ interface Formulario {
   nome: string
   telefone: string
   email: string
-  empresa: string
   cargo: string
   site: string
   instagram: string
@@ -45,7 +45,6 @@ const FORM_VAZIO: Formulario = {
   nome: '',
   telefone: '',
   email: '',
-  empresa: '',
   cargo: '',
   site: '',
   instagram: '',
@@ -91,7 +90,6 @@ export function Captura() {
         nome: lead.nome,
         telefone: lead.telefone,
         email: lead.email,
-        empresa: lead.empresa,
         cargo: lead.cargo ?? '',
         site: lead.site ?? '',
         instagram: lead.instagram ?? '',
@@ -133,16 +131,41 @@ export function Captura() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  /**
+   * Nome da empresa tirado do site (ou do e-mail comercial). Na edicao, se o
+   * dominio nao mudou, fica o nome que o lead ja tinha — leads antigos tem o
+   * nome digitado a mao, e trocar por um derivado seria piorar.
+   */
+  const empresaDoLead = (): string => {
+    const dominio = dominioDaEmpresa(form.site, form.email)
+    if (
+      leadOriginal &&
+      dominio === dominioDaEmpresa(leadOriginal.site, leadOriginal.email) &&
+      leadOriginal.empresa.trim()
+    ) {
+      return leadOriginal.empresa.trim()
+    }
+    // A validacao garante o dominio; o fallback so evita string vazia, que o
+    // backend recusa.
+    return dominio ? nomeDaEmpresa(dominio) : form.nome.trim()
+  }
+
   const salvar = async (e: FormEvent | null, acao: Acao) => {
     e?.preventDefault()
     if (!usuario || !evento) return
     if (!validar()) return
 
+    const empresa = empresaDoLead()
+
     // A aba do HubSpot precisa abrir AINDA dentro do gesto de toque, antes de
     // qualquer await — senao o navegador trata como popup e bloqueia.
     let abriuAgendamento = false
     if (acao === 'agendar') {
-      const link = montarLinkAgendamento(form, baseDoAgendamento(evento, usuario), evento)
+      const link = montarLinkAgendamento(
+        { ...form, empresa },
+        baseDoAgendamento(evento, usuario),
+        evento,
+      )
       if (link) {
         window.open(link, '_blank', 'noopener,noreferrer')
         abriuAgendamento = true
@@ -167,7 +190,7 @@ export function Captura() {
       nome: form.nome.trim(),
       telefone: form.telefone.trim(),
       email: form.email.trim().toLowerCase(),
-      empresa: form.empresa.trim(),
+      empresa,
       cargo: form.cargo.trim() || null,
       site: form.site.trim() || null,
       instagram: form.instagram.trim() || null,
@@ -242,6 +265,16 @@ export function Captura() {
   }
 
   const jaEnviado = leadOriginal?.status_sync === 'enviado'
+
+  // Mostra o nome que a empresa vai ganhar, para o BDR corrigir o site na hora
+  // se sair algo estranho.
+  const dominioSite = dominioDoSite(form.site)
+  const dominioEmail = dominioDoEmail(form.email)
+  const dicaSite = dominioSite
+    ? `Empresa: ${nomeDaEmpresa(dominioSite)}`
+    : !form.site.trim() && dominioEmail
+      ? `Sem site, a empresa sai do e-mail: ${nomeDaEmpresa(dominioEmail)}`
+      : 'É do site que sai a empresa no HubSpot.'
 
   return (
     <div className="min-h-full pb-16">
@@ -325,16 +358,6 @@ export function Captura() {
                 onChange={(e) => definir('email', e.target.value)}
               />
               <Campo
-                id="empresa"
-                rotulo="Nome da empresa"
-                obrigatorio
-                autoComplete="organization"
-                autoCapitalize="words"
-                value={form.empresa}
-                erro={erros.empresa}
-                onChange={(e) => definir('empresa', e.target.value)}
-              />
-              <Campo
                 id="site"
                 rotulo="Site"
                 type="url"
@@ -342,7 +365,10 @@ export function Captura() {
                 autoCapitalize="none"
                 spellCheck={false}
                 placeholder="loja.com.br"
+                obrigatorio={!dominioDoEmail(form.email)}
+                dica={dicaSite}
                 value={form.site}
+                erro={erros.site}
                 onChange={(e) => definir('site', e.target.value)}
               />
             </Card>
