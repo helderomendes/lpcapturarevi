@@ -15,6 +15,7 @@ import {
   resumoFila,
   salvarEventos,
 } from '@/lib/db'
+import { eventoMaisProximo } from '@/lib/eventos'
 import { assinarSync, limparAviso, sincronizar, type EstadoSync } from '@/lib/sync'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -76,14 +77,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     let ativo = true
 
-    /** O ultimo evento usado ja vem selecionado. O BDR nao escolhe 40x por dia. */
+    /**
+     * Ao abrir o app, o evento mais proximo ja vem selecionado — e nao o ultimo
+     * usado. Lembrar o ultimo fazia a primeira captura de uma feira nova cair
+     * na feira anterior sempre que alguem esquecia de trocar. A troca manual
+     * continua valendo ate o app ser aberto de novo.
+     */
     const escolher = async (lista: Evento[]) => {
-      const salvo = await eventoCache.ler(usuario.id)
-      const escolhido = lista.find((e) => e.id === salvo) ?? lista[0] ?? null
+      const escolhido = eventoMaisProximo(lista)
       if (ativo) setEvento(escolhido)
-      if (escolhido && escolhido.id !== salvo) {
-        await eventoCache.gravar(usuario.id, escolhido.id)
-      }
+      if (escolhido) await eventoCache.gravar(usuario.id, escolhido.id)
     }
 
     const carregar = async () => {
