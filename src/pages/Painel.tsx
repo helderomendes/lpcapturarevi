@@ -8,9 +8,12 @@ import { useApp } from '@/contexts/AppContext'
 import {
   alternarEventoAtivo,
   alternarUsuarioAtivo,
+  atualizarEvento,
   atualizarUsuario,
+  avisoOpcaoHubSpot,
   criarAcesso,
   criarEvento,
+  garantirOpcaoHubSpot,
   listarEquipe,
   listarTodosOsEventos,
   listarTodosOsLeads,
@@ -20,6 +23,19 @@ import {
 } from '@/lib/admin'
 import { emailValido, formatarDataHora } from '@/lib/validacao'
 import type { Evento, Papel, Usuario } from '@/types'
+
+/**
+ * Depois de salvar o evento, garante a opcao no dropdown do HubSpot. O evento
+ * ja esta salvo: se o HubSpot falhar, vira aviso e o admin segue.
+ */
+async function sincronizarOpcaoHubSpot(valor: string): Promise<string> {
+  try {
+    return avisoOpcaoHubSpot(await garantirOpcaoHubSpot(valor))
+  } catch (e) {
+    const motivo = e instanceof Error ? e.message : String(e)
+    return `Evento salvo, mas não consegui conferir a opção no HubSpot: ${motivo}`
+  }
+}
 
 type Aba = 'equipe' | 'eventos' | 'leads'
 
@@ -542,7 +558,8 @@ function SecaoEventos() {
         data_fim: fim,
         link_agendamento: link.trim() || null,
       })
-      setAviso(`Evento "${criado.nome}" criado e ativo.`)
+      const avisoHubSpot = await sincronizarOpcaoHubSpot(criado.valor_detalhamento_origem)
+      setAviso(`Evento "${criado.nome}" criado e ativo. ${avisoHubSpot}`)
       setNome('')
       setDetalhamento('')
       setInicio('')
@@ -571,6 +588,11 @@ function SecaoEventos() {
     }
   }
 
+  const aoSalvarEdicao = async () => {
+    await recarregar()
+    await atualizar()
+  }
+
   return (
     <div className="space-y-4">
       <Card className="space-y-4">
@@ -595,7 +617,7 @@ function SecaoEventos() {
           <Campo
             id="ev-detalhamento"
             rotulo="Detalhamento de origem"
-            dica="Vai exatamente assim para o HubSpot. Em branco, usa o nome do evento."
+            dica="Vai exatamente assim para o HubSpot, que ganha a opção no dropdown se ainda não tiver. Em branco, usa o nome do evento."
             value={detalhamento}
             onChange={(e) => setDetalhamento(e.target.value)}
           />
@@ -647,40 +669,189 @@ function SecaoEventos() {
           <h2 className="text-base font-semibold">Eventos ({eventos.length})</h2>
           <ul className="space-y-2">
             {eventos.map((evento) => (
-              <li
+              <ItemEvento
                 key={evento.id}
-                className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {evento.nome}
-                    {evento.ativo ? (
-                      <span className="ml-2 rounded-full border border-emerald-400/40 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
-                        ativo
-                      </span>
-                    ) : (
-                      <span className="ml-2 text-xs text-white/40">inativo</span>
-                    )}
-                  </p>
-                  <p className="truncate text-xs text-white/45">
-                    {evento.data_inicio} a {evento.data_fim} ·{' '}
-                    {evento.valor_detalhamento_origem}
-                  </p>
-                </div>
-                <Botao
-                  variante={evento.ativo ? 'fantasma' : 'secundario'}
-                  className="!min-h-[40px] !py-1.5 !text-sm"
-                  carregando={ocupado === evento.id}
-                  onClick={() => void alternar(evento)}
-                >
-                  {evento.ativo ? 'Desativar' : 'Ativar'}
-                </Botao>
-              </li>
+                evento={evento}
+                ocupado={ocupado === evento.id}
+                onAlternar={() => void alternar(evento)}
+                onSalvo={aoSalvarEdicao}
+              />
             ))}
           </ul>
         </Card>
       )}
     </div>
+  )
+}
+
+function ItemEvento({
+  evento,
+  ocupado,
+  onAlternar,
+  onSalvo,
+}: {
+  evento: Evento
+  ocupado: boolean
+  onAlternar: () => void
+  onSalvo: () => Promise<void>
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [nome, setNome] = useState(evento.nome)
+  const [detalhamento, setDetalhamento] = useState(evento.valor_detalhamento_origem)
+  const [inicio, setInicio] = useState(evento.data_inicio)
+  const [fim, setFim] = useState(evento.data_fim)
+  const [link, setLink] = useState(evento.link_agendamento ?? '')
+  const [errosCampo, setErrosCampo] = useState<Record<string, string | undefined>>({})
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  const abrir = () => {
+    // Sempre parte do que esta salvo agora, sem sobra de uma edicao abandonada.
+    setNome(evento.nome)
+    setDetalhamento(evento.valor_detalhamento_origem)
+    setInicio(evento.data_inicio)
+    setFim(evento.data_fim)
+    setLink(evento.link_agendamento ?? '')
+    setErrosCampo({})
+    setErro(null)
+    setAviso(null)
+    setAberto(true)
+  }
+
+  const salvar = async (e: FormEvent) => {
+    e.preventDefault()
+    setErro(null)
+    setAviso(null)
+
+    const novos: Record<string, string | undefined> = {}
+    if (!nome.trim()) novos.nome = 'Informe o nome'
+    if (!detalhamento.trim()) novos.detalhamento = 'Informe o detalhamento de origem'
+    if (!inicio) novos.inicio = 'Informe a data de início'
+    if (!fim) novos.fim = 'Informe a data de fim'
+    if (inicio && fim && fim < inicio) novos.fim = 'O fim não pode ser antes do início'
+    setErrosCampo(novos)
+    if (Object.values(novos).some(Boolean)) return
+
+    setSalvando(true)
+    try {
+      const salvo = await atualizarEvento(evento.id, {
+        nome: nome.trim(),
+        valor_detalhamento_origem: detalhamento.trim(),
+        data_inicio: inicio,
+        data_fim: fim,
+        link_agendamento: link.trim() || null,
+      })
+      const avisoHubSpot = await sincronizarOpcaoHubSpot(salvo.valor_detalhamento_origem)
+      await onSalvo()
+      setAviso(`Evento atualizado. ${avisoHubSpot}`)
+      setAberto(false)
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <li className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">
+            {evento.nome}
+            {evento.ativo ? (
+              <span className="ml-2 rounded-full border border-emerald-400/40 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
+                ativo
+              </span>
+            ) : (
+              <span className="ml-2 text-xs text-white/40">inativo</span>
+            )}
+          </p>
+          <p className="truncate text-xs text-white/45">
+            {evento.data_inicio} a {evento.data_fim} · {evento.valor_detalhamento_origem}
+          </p>
+        </div>
+        <Botao
+          variante="secundario"
+          className="!min-h-[40px] !py-1.5 !text-sm"
+          aria-expanded={aberto}
+          onClick={() => (aberto ? setAberto(false) : abrir())}
+        >
+          {aberto ? 'Fechar' : 'Editar'}
+        </Botao>
+        <Botao
+          variante={evento.ativo ? 'fantasma' : 'secundario'}
+          className="!min-h-[40px] !py-1.5 !text-sm"
+          carregando={ocupado}
+          onClick={onAlternar}
+        >
+          {evento.ativo ? 'Desativar' : 'Ativar'}
+        </Botao>
+      </div>
+
+      {aberto && (
+        <form onSubmit={salvar} className="mt-3 space-y-4 border-t border-white/10 pt-3" noValidate>
+          <Campo
+            id={`ev-${evento.id}-nome`}
+            rotulo="Nome do evento"
+            obrigatorio
+            value={nome}
+            erro={errosCampo.nome}
+            onChange={(e) => setNome(e.target.value)}
+          />
+          <Campo
+            id={`ev-${evento.id}-detalhamento`}
+            rotulo="Detalhamento de origem"
+            obrigatorio
+            dica="Vai exatamente assim para o HubSpot. Ao salvar, a opção é criada no dropdown 'Detalhamento de Origem do Negócio' se ainda não existir. Vale só para leads novos: negócios já criados não mudam."
+            value={detalhamento}
+            erro={errosCampo.detalhamento}
+            onChange={(e) => setDetalhamento(e.target.value)}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo
+              id={`ev-${evento.id}-inicio`}
+              rotulo="Início"
+              obrigatorio
+              type="date"
+              value={inicio}
+              erro={errosCampo.inicio}
+              onChange={(e) => setInicio(e.target.value)}
+            />
+            <Campo
+              id={`ev-${evento.id}-fim`}
+              rotulo="Fim"
+              obrigatorio
+              type="date"
+              value={fim}
+              erro={errosCampo.fim}
+              onChange={(e) => setFim(e.target.value)}
+            />
+          </div>
+          <Campo
+            id={`ev-${evento.id}-link`}
+            rotulo="Link de agendamento"
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            spellCheck={false}
+            dica="Opcional. Em branco, usa o link padrão de revezamento."
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+          />
+          <Botao type="submit" carregando={salvando} className="!min-h-[48px]" larguraTotal>
+            Salvar
+          </Botao>
+        </form>
+      )}
+
+      {(erro || aviso) && (
+        <div className="mt-3 space-y-3">
+          <Erro mensagem={erro} />
+          {aviso && <Sucesso>{aviso}</Sucesso>}
+        </div>
+      )}
+    </li>
   )
 }
 

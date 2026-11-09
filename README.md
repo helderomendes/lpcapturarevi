@@ -248,10 +248,13 @@ não é o site de ninguém.
 ```bash
 supabase functions deploy sync-lead
 supabase functions deploy admin-usuarios
+supabase functions deploy admin-eventos
 supabase secrets set --env-file supabase/.env.local
 ```
 
-Há duas funções: `sync-lead`, que materializa o lead no HubSpot, e `admin-usuarios`, que
+Há três funções: `sync-lead`, que materializa o lead no HubSpot, `admin-eventos`, que cria no
+dropdown "Detalhamento de Origem do Negócio" a opção do evento salvo no painel (só admin; precisa do
+escopo `crm.schemas.deals.write` no token, e sem ele o painel só avisa), e `admin-usuarios`, que
 cria e edita acessos (`acao: 'criar' | 'atualizar' | 'meu_link'`) e resolve o owner ID
 pelo e-mail. Só `meu_link` dispensa `papel = 'admin'`: ela grava **uma** coluna
 (`link_agendamento`) e **só** na linha de quem chamou — o id vem do JWT, nunca do corpo
