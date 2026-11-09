@@ -10,8 +10,10 @@ import {
   alternarUsuarioAtivo,
   atualizarEvento,
   atualizarUsuario,
+  avisoOpcaoHubSpot,
   criarAcesso,
   criarEvento,
+  garantirOpcaoHubSpot,
   listarEquipe,
   listarTodosOsEventos,
   listarTodosOsLeads,
@@ -21,6 +23,19 @@ import {
 } from '@/lib/admin'
 import { emailValido, formatarDataHora } from '@/lib/validacao'
 import type { Evento, Papel, Usuario } from '@/types'
+
+/**
+ * Depois de salvar o evento, garante a opcao no dropdown do HubSpot. O evento
+ * ja esta salvo: se o HubSpot falhar, vira aviso e o admin segue.
+ */
+async function sincronizarOpcaoHubSpot(valor: string): Promise<string> {
+  try {
+    return avisoOpcaoHubSpot(await garantirOpcaoHubSpot(valor))
+  } catch (e) {
+    const motivo = e instanceof Error ? e.message : String(e)
+    return `Evento salvo, mas não consegui conferir a opção no HubSpot: ${motivo}`
+  }
+}
 
 type Aba = 'equipe' | 'eventos' | 'leads'
 
@@ -543,7 +558,8 @@ function SecaoEventos() {
         data_fim: fim,
         link_agendamento: link.trim() || null,
       })
-      setAviso(`Evento "${criado.nome}" criado e ativo.`)
+      const avisoHubSpot = await sincronizarOpcaoHubSpot(criado.valor_detalhamento_origem)
+      setAviso(`Evento "${criado.nome}" criado e ativo. ${avisoHubSpot}`)
       setNome('')
       setDetalhamento('')
       setInicio('')
@@ -601,7 +617,7 @@ function SecaoEventos() {
           <Campo
             id="ev-detalhamento"
             rotulo="Detalhamento de origem"
-            dica="Vai exatamente assim para o HubSpot. Em branco, usa o nome do evento."
+            dica="Vai exatamente assim para o HubSpot, que ganha a opção no dropdown se ainda não tiver. Em branco, usa o nome do evento."
             value={detalhamento}
             onChange={(e) => setDetalhamento(e.target.value)}
           />
@@ -719,15 +735,16 @@ function ItemEvento({
 
     setSalvando(true)
     try {
-      await atualizarEvento(evento.id, {
+      const salvo = await atualizarEvento(evento.id, {
         nome: nome.trim(),
         valor_detalhamento_origem: detalhamento.trim(),
         data_inicio: inicio,
         data_fim: fim,
         link_agendamento: link.trim() || null,
       })
+      const avisoHubSpot = await sincronizarOpcaoHubSpot(salvo.valor_detalhamento_origem)
       await onSalvo()
-      setAviso('Evento atualizado.')
+      setAviso(`Evento atualizado. ${avisoHubSpot}`)
       setAberto(false)
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
@@ -786,7 +803,7 @@ function ItemEvento({
             id={`ev-${evento.id}-detalhamento`}
             rotulo="Detalhamento de origem"
             obrigatorio
-            dica="Vai exatamente assim para o HubSpot e precisa ser igual à opção do dropdown 'Detalhamento de Origem do Negócio'. Vale só para leads novos: negócios já criados não mudam."
+            dica="Vai exatamente assim para o HubSpot. Ao salvar, a opção é criada no dropdown 'Detalhamento de Origem do Negócio' se ainda não existir. Vale só para leads novos: negócios já criados não mudam."
             value={detalhamento}
             erro={errosCampo.detalhamento}
             onChange={(e) => setDetalhamento(e.target.value)}

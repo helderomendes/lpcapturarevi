@@ -224,6 +224,47 @@ export async function criarEvento(dados: NovoEvento): Promise<Evento> {
 
 export type EdicaoEvento = NovoEvento
 
+export type ResultadoOpcaoHubSpot =
+  | { resultado: 'ja_existia' | 'criada'; valor: string }
+  /** Existe uma opcao que so difere em maiuscula, espaco ou acento. Nao foi criada. */
+  | { resultado: 'parecida'; valor: string }
+
+/**
+ * Garante a opcao do evento no dropdown "Detalhamento de Origem do Negocio" do
+ * HubSpot. Quem chama trata a falha como aviso: o evento ja foi salvo, e sem a
+ * opcao o negocio so perde o dropdown (o texto livre continua certo).
+ */
+export async function garantirOpcaoHubSpot(valor: string): Promise<ResultadoOpcaoHubSpot> {
+  const token = await exigirSessao()
+
+  let resposta: Response
+  try {
+    resposta = await fetch(urlEdgeFunction('admin-eventos'), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao: 'garantir_opcao', valor }),
+    })
+  } catch {
+    throw new Error('Sem conexão com o servidor.')
+  }
+
+  const corpo = await resposta.json().catch(() => null)
+  if (!resposta.ok || corpo?.status !== 'ok') {
+    throw new Error(corpo?.erro ?? `Falha no servidor (HTTP ${resposta.status})`)
+  }
+  return { resultado: corpo.resultado, valor: corpo.valor }
+}
+
+/** Texto para mostrar ao admin depois de garantir a opcao. */
+export function avisoOpcaoHubSpot(r: ResultadoOpcaoHubSpot): string {
+  if (r.resultado === 'criada') return `Opção "${r.valor}" criada no dropdown do HubSpot.`
+  if (r.resultado === 'ja_existia') return `Opção "${r.valor}" já existe no HubSpot.`
+  return (
+    `Já existe no HubSpot a opção "${r.valor}", parecida com o que você digitou. ` +
+    `Não criei outra: edite o evento e use exatamente esse texto.`
+  )
+}
+
 export async function atualizarEvento(id: string, dados: EdicaoEvento): Promise<Evento> {
   const { data, error } = await supabase
     .from('eventos')
