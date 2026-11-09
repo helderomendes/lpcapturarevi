@@ -222,6 +222,20 @@ export async function criarEvento(dados: NovoEvento): Promise<Evento> {
   return data as Evento
 }
 
+export type EdicaoEvento = NovoEvento
+
+export async function atualizarEvento(id: string, dados: EdicaoEvento): Promise<Evento> {
+  const { data, error } = await supabase
+    .from('eventos')
+    .update(dados)
+    .eq('id', id)
+    .select(CAMPOS_EVENTO)
+    .single()
+
+  if (error) throw new Error(traduzir(error.message))
+  return data as Evento
+}
+
 export async function alternarEventoAtivo(id: string, ativo: boolean): Promise<void> {
   const { error } = await supabase.from('eventos').update({ ativo }).eq('id', id)
   if (error) throw new Error(traduzir(error.message))
